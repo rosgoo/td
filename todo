@@ -636,7 +636,7 @@ _start_session() {
             local session_file
             session_file=$(find "$HOME/.claude/projects" -name "${session_id}.jsonl" 2>/dev/null | head -1)
             if [[ -n "$session_file" ]]; then
-                session_cwd=$(jq -r 'select(.cwd) | .cwd' "$session_file" | head -1)
+                session_cwd=$(head -5 "$session_file" | jq -r 'select(.cwd) | .cwd' | head -1)
             fi
             if [[ -z "$session_cwd" ]] || [[ ! -d "$session_cwd" ]]; then
                 echo -e "${RED}Error:${RESET} Session ${DIM}${session_id}${RESET} has no saved directory. Re-link it:" >&2
