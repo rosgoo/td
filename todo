@@ -1003,8 +1003,8 @@ _select_todo() {
     elif [[ -n "$worktree_path" ]]; then
         options+=("Start Claude session")
     else
-        options+=("Start Claude (new worktree)")
         options+=("Start Claude (current dir)")
+        options+=("Start Claude (new worktree)")
     fi
     [[ -n "$worktree_path" && -n "$branch" ]] && options+=("Promote to main repo")
     [[ -z "$worktree_path" && -n "$branch" ]] && options+=("Move to worktree")
