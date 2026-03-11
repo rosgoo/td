@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# todo — A TODO list with fzf. Each todo has a notes.md file and can optionally
+# todo — A TODO list with fzf. Each todo has a plan.md file and can optionally
 # have a Claude Code worktree session, a git branch, and a Linear ticket.
 #
 # Usage:
 #   todo              Open the fzf picker (create or select todos)
 #   todo new "title"  Create a new todo
 #   todo done         Mark a todo as done
-#   todo edit         Open notes.md in $EDITOR
+#   todo edit         Open plan.md in $EDITOR
 #   todo link [type]  Link a Linear ticket or branch
 #   todo open         Open Linear/GitHub links in browser
 #   todo list         List all active todos
@@ -199,29 +199,29 @@ _resolve_id() {
 }
 
 _ensure_notes() {
-    # Ensure notes.md exists for a todo, create if missing
+    # Ensure plan.md exists for a todo, create if missing
     local id="$1"
     local title="$2"
     local notes_path="${NOTES_DIR}/${id}"
 
-    if [[ ! -f "${notes_path}/notes.md" ]]; then
+    if [[ ! -f "${notes_path}/plan.md" ]]; then
         mkdir -p "$notes_path"
-        cat > "${notes_path}/notes.md" << EOF
+        cat > "${notes_path}/plan.md" << EOF
 # ${title}
 
 Created: $(date '+%Y-%m-%d %H:%M')
 
-## Notes
+## Plan
 
 EOF
         # Update notes_path in the todo record
         local updated
-        updated=$(_read_todos | jq --arg id "$id" --arg np "${notes_path}/notes.md" \
+        updated=$(_read_todos | jq --arg id "$id" --arg np "${notes_path}/plan.md" \
             'map(if .id == $id then .notes_path = $np else . end)')
         _write_todos "$updated"
     fi
 
-    echo "${notes_path}/notes.md"
+    echo "${notes_path}/plan.md"
 }
 
 _pick_todo() {
@@ -582,26 +582,31 @@ _demote_to_worktree() {
 
 _launch_claude() {
     # Launch claude for a todo. --resume if session_id exists, --session-id to create new.
-    # Passes todo notes as context via --append-system-prompt.
+    # Passes todo plan as context via --append-system-prompt.
     local id="$1"
     local session_id="$2"
 
     unset CLAUDECODE 2>/dev/null || true
 
-    # Build context from notes (+ parent notes for subtasks)
+    # Build context from plan (+ parent plan for subtasks)
     local todo notes_path context_args=()
     todo=$(_get_todo "$id")
     notes_path=$(echo "$todo" | jq -r '.notes_path // empty')
 
-    local title ticket branch parent_id
+    local title ticket branch parent_id github_pr worktree_path
     title=$(echo "$todo" | jq -r '.title')
     ticket=$(echo "$todo" | jq -r '.linear_ticket // empty')
     branch=$(echo "$todo" | jq -r '.branch // empty')
     parent_id=$(echo "$todo" | jq -r '.parent_id // empty')
+    github_pr=$(echo "$todo" | jq -r '.github_pr // empty')
+    worktree_path=$(echo "$todo" | jq -r '.worktree_path // empty')
 
     local context="# Current Todo: ${title}"
     [[ -n "$ticket" ]] && context="${context}\nLinear: ${ticket}"
     [[ -n "$branch" ]] && context="${context}\nBranch: ${branch}"
+    [[ -n "$github_pr" ]] && context="${context}\nGitHub PR: ${github_pr}"
+    [[ -n "$worktree_path" ]] && context="${context}\nWorktree: ${worktree_path}"
+    [[ -n "$notes_path" ]] && context="${context}\nPlan: ${notes_path}"
 
     # Append parent context for subtasks
     if [[ -n "$parent_id" ]]; then
@@ -612,14 +617,14 @@ _launch_claude() {
             parent_notes_path=$(echo "$parent" | jq -r '.notes_path // empty')
             context="${context}\nParent: ${parent_title}"
             if [[ -n "$parent_notes_path" && -f "$parent_notes_path" ]]; then
-                context="${context}\n\n## Parent notes\n\n$(cat "$parent_notes_path")"
+                context="${context}\n\n## Parent plan\n\n$(cat "$parent_notes_path")"
             fi
         fi
     fi
 
-    # Append own notes
+    # Append own plan
     if [[ -n "$notes_path" && -f "$notes_path" ]]; then
-        context="${context}\n\n## Notes\n\n$(cat "$notes_path")"
+        context="${context}\n\n## Plan\n\n$(cat "$notes_path")"
     fi
 
     context_args=(--append-system-prompt "$(echo -e "$context")")
@@ -796,14 +801,14 @@ cmd_new() {
     id=$(_generate_id)
     notes_path="${NOTES_DIR}/${id}"
 
-    # Create notes.md
+    # Create plan.md
     mkdir -p "$notes_path"
-    cat > "${notes_path}/notes.md" << EOF
+    cat > "${notes_path}/plan.md" << EOF
 # ${title}
 
 Created: $(date '+%Y-%m-%d %H:%M')
 
-## Notes
+## Plan
 
 EOF
 
@@ -814,7 +819,7 @@ EOF
     updated=$(_read_todos | jq --arg id "$id" \
         --arg title "$title" \
         --arg created_at "$now" \
-        --arg notes_path "${notes_path}/notes.md" \
+        --arg notes_path "${notes_path}/plan.md" \
         --arg status "active" \
         '. + [{
             id: $id,
@@ -828,7 +833,7 @@ EOF
     _write_todos "$updated"
 
     echo -e "${GREEN}${SYM_CHECK}${RESET} Created: ${BOLD}${title}${RESET}"
-    echo -e "  ${DIM}Notes: ${notes_path}/notes.md${RESET}"
+    echo -e "  ${DIM}Plan: ${notes_path}/plan.md${RESET}"
 }
 
 cmd_split() {
@@ -863,15 +868,15 @@ cmd_split() {
     id=$(_generate_id)
     notes_path="${NOTES_DIR}/${id}"
 
-    # Create notes.md for subtask (parent context injected dynamically via system prompt)
+    # Create plan.md for subtask (parent context injected dynamically via system prompt)
     mkdir -p "$notes_path"
-    cat > "${notes_path}/notes.md" << EOF
+    cat > "${notes_path}/plan.md" << EOF
 # ${title}
 
 Created: $(date '+%Y-%m-%d %H:%M')
 Parent: ${parent_title}
 
-## Notes
+## Plan
 
 EOF
 
@@ -881,7 +886,7 @@ EOF
     updated=$(_read_todos | jq --arg id "$id" \
         --arg title "$title" \
         --arg created_at "$now" \
-        --arg notes_path "${notes_path}/notes.md" \
+        --arg notes_path "${notes_path}/plan.md" \
         --arg status "active" \
         --arg parent_id "$parent_id" \
         --arg branch "$parent_branch" \
@@ -936,7 +941,7 @@ _archive_todo() {
 
 _select_todo() {
     # Called when a todo is selected from the picker.
-    # Opens notes, then offers to start/resume a Claude session.
+    # Opens plan, then offers to start/resume a Claude session.
     local id="$1"
     local todo
     todo=$(_get_todo "$id")
@@ -950,7 +955,7 @@ _select_todo() {
     title=$(echo "$todo" | jq -r '.title')
     notes_path=$(echo "$todo" | jq -r '.notes_path // empty')
 
-    # Ensure notes.md exists
+    # Ensure plan.md exists
     if [[ -z "$notes_path" || ! -f "$notes_path" ]]; then
         notes_path=$(_ensure_notes "$id" "$title")
     fi
@@ -1008,7 +1013,8 @@ _select_todo() {
     fi
     [[ -n "$worktree_path" && -n "$branch" ]] && options+=("Promote to main repo")
     [[ -z "$worktree_path" && -n "$branch" ]] && options+=("Move to worktree")
-    options+=("Edit notes")
+    options+=("Edit plan")
+    options+=("Link")
     [[ -n "$ticket" ]] && options+=("Open Linear")
     [[ -n "$github_pr" || -n "$branch" ]] && options+=("Open GitHub")
     options+=("Split into subtask" "Mark as done" "Back")
@@ -1031,8 +1037,11 @@ _select_todo() {
         "Move to worktree")
             _demote_to_worktree "$id"
             ;;
-        "Edit notes")
+        "Edit plan")
             $NOTES_EDITOR "$notes_path"
+            ;;
+        "Link")
+            cmd_link "$id"
             ;;
         "Open Linear")
             local ticket_url
@@ -1151,7 +1160,7 @@ cmd_note() {
     local selected_id="${1:-}"
     local text="${2:-}"
     if [[ -z "$selected_id" || -z "$text" ]]; then
-        echo -e "${RED}Usage:${RESET} todo note <id> \"text to append\"" >&2
+        echo -e "${RED}Usage:${RESET} todo note <id> \"text to append to plan\"" >&2
         exit 1
     fi
     selected_id=$(_resolve_id "$selected_id") || exit 1
@@ -1186,7 +1195,7 @@ cmd_edit() {
     if [[ -n "$selected_id" ]]; then
         selected_id=$(_resolve_id "$selected_id") || exit 1
     else
-        selected_id=$(_pick_todo "Select todo to edit notes" "edit ❯ ") || exit 0
+        selected_id=$(_pick_todo "Select todo to edit plan" "edit ❯ ") || exit 0
     fi
 
     local todo
@@ -1195,7 +1204,7 @@ cmd_edit() {
     title=$(echo "$todo" | jq -r '.title')
     notes_path=$(echo "$todo" | jq -r '.notes_path // empty')
 
-    # Ensure notes exist
+    # Ensure plan exists
     if [[ -z "$notes_path" || ! -f "$notes_path" ]]; then
         notes_path=$(_ensure_notes "$selected_id" "$title")
     fi
@@ -1314,7 +1323,7 @@ cmd_link() {
         if [[ "$arg1" == *"linear.app"* || "$arg1" == *"github.com"* ]]; then
             url="$arg1"
         elif [[ "$arg1" == *"/"* || "$arg1" == *.md || "$arg1" == *.txt ]]; then
-            # Looks like a file path — treat as notes link, need an ID
+            # Looks like a file path — treat as plan link, need an ID
             url="$arg1"
         else
             # Treat as ID — try to resolve, fall back to treating as URL
@@ -1385,11 +1394,11 @@ cmd_link() {
     [[ -n "$current_ticket" ]] && echo -e "  ${MAGENTA}${SYM_DOT}${RESET} Linear   ${current_ticket}"
     [[ -n "$current_branch" ]] && echo -e "  ${CYAN}${SYM_BRANCH}${RESET} Branch   ${current_branch}"
     [[ -n "$current_session" ]] && echo -e "  ${GREEN}${SYM_SESSION}${RESET} Session  ${DIM}${current_session}${RESET}"
-    [[ -n "$current_notes" ]] && echo -e "  ${DIM}📄${RESET} Notes    ${DIM}${current_notes}${RESET}"
+    [[ -n "$current_notes" ]] && echo -e "  ${DIM}📄${RESET} Plan     ${DIM}${current_notes}${RESET}"
     echo ""
 
     local choice
-    choice=$(_gum_choose "What to link?" "Linear ticket" "Git branch" "Claude session" "Notes file") || exit 0
+    choice=$(_gum_choose "What to link?" "Linear ticket" "Git branch" "Claude session" "Plan file") || exit 0
 
     case "$choice" in
         "Linear"*)
@@ -1462,10 +1471,10 @@ cmd_link() {
             _write_todos "$updated"
             echo -e "${GREEN}${SYM_CHECK}${RESET} Linked: ${BOLD}${title}${RESET} ${SYM_ARROW} ${GREEN}${SYM_SESSION} ${new_session}${RESET}"
             ;;
-        "Notes"*)
+        "Plan"*)
             [[ -n "$current_notes" ]] && echo -e "${DIM}Current: ${current_notes}${RESET}"
             local notes_input
-            notes_input=$(_gum_input "Path to notes file (e.g. ~/vault/my-note.md)") || exit 0
+            notes_input=$(_gum_input "Path to plan file (e.g. ~/vault/my-plan.md)") || exit 0
             [[ -z "$notes_input" ]] && exit 0
             # Expand ~ and resolve to absolute path
             notes_input="${notes_input/#\~/$HOME}"
@@ -1596,7 +1605,7 @@ cmd_delete() {
         echo -e "${RED}Delete:${RESET} ${BOLD}${title}${RESET}"
         [[ -n "$worktree_path" ]] && echo -e "  ${DIM}Will remove worktree: ${worktree_path}${RESET}"
         [[ -n "$branch" ]] && echo -e "  ${DIM}Will delete branch: ${branch}${RESET}"
-        [[ -n "$notes_path" ]] && echo -e "  ${DIM}Will delete notes: ${notes_path}${RESET}"
+        [[ -n "$notes_path" ]] && echo -e "  ${DIM}Will delete plan: ${notes_path}${RESET}"
         _gum_confirm "Delete this todo and all related data?" || exit 0
     fi
 
@@ -1614,13 +1623,13 @@ cmd_delete() {
         fi
     fi
 
-    # Delete notes directory
+    # Delete plan directory
     if [[ -n "$notes_path" ]]; then
         local notes_dir
         notes_dir=$(dirname "$notes_path")
         if [[ -d "$notes_dir" && "$notes_dir" == "${NOTES_DIR}/"* ]]; then
             rm -rf "$notes_dir"
-            echo -e "${DIM}Deleted notes${RESET}"
+            echo -e "${DIM}Deleted plan${RESET}"
         fi
     fi
 
@@ -1647,7 +1656,7 @@ cmd_help() {
     echo -e "\033[0;36m    █    █▄▄▄█ █▄▄▄▀  █▄▄▄█\033[0m"
     echo ""
     echo -e "  ${DIM}Minimal task manager for Claude Code${RESET}"
-    echo -e "  ${DIM}Handles note injections, Claude sessions and worktree management.${RESET}"
+    echo -e "  ${DIM}Handles plan injections, Claude sessions and worktree management.${RESET}"
     echo -e "  ${DIM}All commands work non-interactively for AI agents.${RESET}"
     echo ""
     echo -e "  ${DIM}$(printf '%.0s─' {1..54})${RESET}"
@@ -1655,8 +1664,8 @@ cmd_help() {
     echo -e "  ${BOLD}Interactive${RESET}"
     echo ""
     echo -e "  ${CYAN}todo${RESET}                            Open interactive app"
-    echo -e "  ${CYAN}todo edit${RESET} ${DIM}[id]${RESET}                  Open notes in editor"
-    echo -e "  ${CYAN}todo link${RESET} ${DIM}[id]${RESET}                 Link Linear/GitHub/notes"
+    echo -e "  ${CYAN}todo edit${RESET} ${DIM}[id]${RESET}                  Open plan in editor"
+    echo -e "  ${CYAN}todo link${RESET} ${DIM}[id]${RESET}                 Link Linear/GitHub/plan"
     echo -e "  ${CYAN}todo open${RESET}                       Open links in browser"
     echo ""
     echo -e "  ${BOLD}Non-interactive${RESET} ${DIM}(AI-friendly)${RESET}"
@@ -1665,11 +1674,11 @@ cmd_help() {
     echo -e "  ${CYAN}todo done${RESET} ${DIM}<id>${RESET}                  Mark as done"
     echo -e "  ${CYAN}todo rename${RESET} ${DIM}<id> \"title\"${RESET}        Rename a todo"
     echo -e "  ${CYAN}todo delete${RESET} ${DIM}<id> [--force]${RESET}     Delete todo and all data"
-    echo -e "  ${CYAN}todo note${RESET} ${DIM}<id> \"text\"${RESET}           Append to notes"
+    echo -e "  ${CYAN}todo note${RESET} ${DIM}<id> \"text\"${RESET}           Append to plan"
     echo -e "  ${CYAN}todo get${RESET} ${DIM}<id>${RESET}                   Print todo as JSON"
-    echo -e "  ${CYAN}todo show${RESET} ${DIM}<id>${RESET}                  Print notes path"
+    echo -e "  ${CYAN}todo show${RESET} ${DIM}<id>${RESET}                  Print plan path"
     echo -e "  ${CYAN}todo split${RESET} ${DIM}<id> \"title\"${RESET}         Create subtask"
-    echo -e "  ${CYAN}todo link${RESET} ${DIM}<id> <url|path>${RESET}      Link Linear/GitHub/notes"
+    echo -e "  ${CYAN}todo link${RESET} ${DIM}<id> <url|path>${RESET}      Link Linear/GitHub/plan"
     echo -e "  ${CYAN}todo list${RESET}                       List active todos"
     echo -e "  ${CYAN}todo archive${RESET}                    Show completed todos"
     echo ""
