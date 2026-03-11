@@ -15,6 +15,10 @@ set -euo pipefail
 #   todo archive      Show completed todos
 #   todo help         Show this help
 
+# Load user settings
+TODO_SETTINGS="${TODO_SETTINGS:-${HOME}/.config/claude-todo/settings.sh}"
+[[ -f "$TODO_SETTINGS" ]] && source "$TODO_SETTINGS"
+
 DATA_DIR="${TODO_DATA_DIR:-${HOME}/.claude-todos}"
 TODOS_FILE="${DATA_DIR}/todos.json"
 NOTES_DIR="${DATA_DIR}/notes"
