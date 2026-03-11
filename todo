@@ -1316,7 +1316,7 @@ cmd_link() {
 
     # Two args: todo link <id> <url> (programmatic)
     if [[ -n "$arg1" && -n "$arg2" ]]; then
-        selected_id=$(_resolve_id "$arg1") || exit 1
+        selected_id=$(_resolve_id "$arg1") || return 1
         url="$arg2"
     elif [[ -n "$arg1" ]]; then
         # One arg: could be a URL (interactive pick) or an ID (interactive link type)
@@ -1332,7 +1332,7 @@ cmd_link() {
     fi
 
     if [[ -z "$selected_id" ]]; then
-        selected_id=$(_pick_todo "Select todo to link" "link ❯ ") || exit 0
+        selected_id=$(_pick_todo "Select todo to link" "link ❯ ") || return 0
     fi
 
     local todo
@@ -1377,7 +1377,7 @@ cmd_link() {
             echo -e "${GREEN}${SYM_CHECK}${RESET} Linked: ${BOLD}${title}${RESET} ${SYM_ARROW} ${DIM}${notes_input}${RESET}"
         else
             echo -e "${RED}Unknown URL.${RESET} Paste a Linear URL, GitHub URL, or file path." >&2
-            exit 1
+            return 1
         fi
         return
     fi
@@ -1398,14 +1398,14 @@ cmd_link() {
     echo ""
 
     local choice
-    choice=$(_gum_choose "What to link?" "Linear ticket" "Git branch" "Claude session" "Plan file") || exit 0
+    choice=$(_gum_choose "What to link?" "Linear ticket" "Git branch" "Claude session" "Plan file") || return 0
 
     case "$choice" in
         "Linear"*)
             [[ -n "$current_ticket" ]] && echo -e "${DIM}Current: ${current_ticket}${RESET}"
             local raw_input
-            raw_input=$(_gum_input "Linear URL or ticket ID (e.g. CORE-12207)") || exit 0
-            [[ -z "$raw_input" ]] && exit 0
+            raw_input=$(_gum_input "Linear URL or ticket ID (e.g. CORE-12207)") || return 0
+            [[ -z "$raw_input" ]] && return 0
             local ticket_id
             ticket_id=$(_extract_linear_ticket "$raw_input")
             local updated
@@ -1421,12 +1421,12 @@ cmd_link() {
             _require_repo
             [[ -n "$current_branch" ]] && echo -e "${DIM}Current: ${current_branch}${RESET}"
             local bchoice
-            bchoice=$(_gum_choose "How?" "Enter branch name or GitHub URL" "Pick from existing branches") || exit 0
+            bchoice=$(_gum_choose "How?" "Enter branch name or GitHub URL" "Pick from existing branches") || return 0
             local new_branch=""
             case "$bchoice" in
                 "Enter"*)
                     local raw_input
-                    raw_input=$(_gum_input "Branch name or GitHub URL") || exit 0
+                    raw_input=$(_gum_input "Branch name or GitHub URL") || return 0
                     new_branch=$(_extract_github_branch "$raw_input")
                     ;;
                 "Pick"*)
@@ -1434,15 +1434,15 @@ cmd_link() {
                     new_branch=$(git -C "$REPO_ROOT" branch --format='%(refname:short)' | \
                         fzf --header "Select branch" --layout=reverse --height=~50% --border --prompt="branch ❯ ") || true
                     ;;
-                *) exit 0 ;;
+                *) return 0 ;;
             esac
-            [[ -z "$new_branch" ]] && { echo -e "${DIM}Cancelled.${RESET}"; exit 0; }
+            [[ -z "$new_branch" ]] && { echo -e "${DIM}Cancelled.${RESET}"; return 0; }
             if ! git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/${new_branch}" 2>/dev/null; then
                 if git -C "$REPO_ROOT" ls-remote --heads origin "${new_branch}" 2>/dev/null | grep -q .; then
                     echo -e "${DIM}Branch '${new_branch}' exists on remote (will be fetched on session start).${RESET}"
                 else
                     echo -e "${YELLOW}Warning:${RESET} Branch '${new_branch}' does not exist locally or on remote."
-                    _gum_confirm "Continue anyway?" || exit 0
+                    _gum_confirm "Continue anyway?" || return 0
                 fi
             fi
             local existing_wt
@@ -1463,8 +1463,8 @@ cmd_link() {
         "Claude"*)
             [[ -n "$current_session" ]] && echo -e "${DIM}Current: ${current_session}${RESET}"
             local new_session
-            new_session=$(_gum_input "Claude session UUID") || exit 0
-            [[ -z "$new_session" ]] && exit 0
+            new_session=$(_gum_input "Claude session UUID") || return 0
+            [[ -z "$new_session" ]] && return 0
             local updated
             updated=$(_read_todos | jq --arg id "$selected_id" --arg sid "$new_session" --arg cwd "$(pwd)" \
                 'map(if .id == $id then .session_id = $sid | .session_cwd = $cwd else . end)')
@@ -1474,14 +1474,14 @@ cmd_link() {
         "Plan"*)
             [[ -n "$current_notes" ]] && echo -e "${DIM}Current: ${current_notes}${RESET}"
             local notes_input
-            notes_input=$(_gum_input "Path to plan file (e.g. ~/vault/my-plan.md)") || exit 0
-            [[ -z "$notes_input" ]] && exit 0
+            notes_input=$(_gum_input "Path to plan file (e.g. ~/vault/my-plan.md)") || return 0
+            [[ -z "$notes_input" ]] && return 0
             # Expand ~ and resolve to absolute path
             notes_input="${notes_input/#\~/$HOME}"
             notes_input="$(realpath "$notes_input" 2>/dev/null || echo "$notes_input")"
             if [[ ! -f "$notes_input" ]]; then
                 echo -e "${YELLOW}File does not exist yet.${RESET}"
-                _gum_confirm "Link anyway?" || exit 0
+                _gum_confirm "Link anyway?" || return 0
             fi
             local updated
             updated=$(_read_todos | jq --arg id "$selected_id" --arg np "$notes_input" \
@@ -1489,7 +1489,7 @@ cmd_link() {
             _write_todos "$updated"
             echo -e "${GREEN}${SYM_CHECK}${RESET} Linked: ${BOLD}${title}${RESET} ${SYM_ARROW} ${DIM}${notes_input}${RESET}"
             ;;
-        *) exit 0 ;;
+        *) return 0 ;;
     esac
 }
 
