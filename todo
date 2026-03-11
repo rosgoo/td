@@ -15,9 +15,15 @@ set -euo pipefail
 #   todo archive      Show completed todos
 #   todo help         Show this help
 
-# Load user settings
-TODO_SETTINGS="${TODO_SETTINGS:-${HOME}/.config/claude-todo/settings.sh}"
-[[ -f "$TODO_SETTINGS" ]] && source "$TODO_SETTINGS"
+# Load user settings (env vars override settings.json)
+TODO_SETTINGS="${TODO_SETTINGS:-${HOME}/.config/claude-todo/settings.json}"
+if [[ -f "$TODO_SETTINGS" ]] && command -v jq &>/dev/null; then
+    _s() { jq -r "$1 // empty" "$TODO_SETTINGS" 2>/dev/null | sed "s|^~|$HOME|"; }
+    : "${TODO_DATA_DIR:=$(_s '.data_dir')}"
+    : "${TODO_REPO:=$(_s '.repo')}"
+    : "${TODO_EDITOR:=$(_s '.editor')}"
+    unset -f _s
+fi
 
 DATA_DIR="${TODO_DATA_DIR:-${HOME}/.claude-todos}"
 TODOS_FILE="${DATA_DIR}/todos.json"
@@ -140,6 +146,11 @@ _github_repo_url() {
 
 _github_branch_url() {
     local branch="$1"
+    # Don't wrap URLs that are already full GitHub URLs (e.g. PR links stored as branch)
+    if [[ "$branch" == http* ]]; then
+        echo "$branch"
+        return
+    fi
     local repo_url
     repo_url=$(_github_repo_url)
     if [[ -n "$repo_url" && -n "$branch" ]]; then
@@ -249,8 +260,13 @@ _pick_todo() {
 }
 
 _format_fzf_lines() {
+    local show_done="${1:-true}"
     local all_todos
-    all_todos=$(_read_todos | jq -r 'sort_by(.created_at) | reverse')
+    if [[ "$show_done" == "true" ]]; then
+        all_todos=$(_read_todos | jq -r 'sort_by(.created_at) | reverse')
+    else
+        all_todos=$(_read_todos | jq -r '[.[] | select(.status != "done")] | sort_by(.created_at) | reverse')
+    fi
     local count
     count=$(echo "$all_todos" | jq 'length')
 
@@ -260,10 +276,12 @@ _format_fzf_lines() {
 
     # Single jq call outputs all fields as tab-delimited lines
     # Active todos first, then done todos with strikethrough
-    local now_epoch
+    local now_epoch today_epoch yesterday_epoch
     now_epoch=$(date +%s)
+    today_epoch=$(date -j -f "%Y-%m-%d %H:%M:%S" "$(date +%Y-%m-%d) 00:00:00" +%s)
+    yesterday_epoch=$((today_epoch - 86400))
 
-    echo "$all_todos" | jq -r --arg now "$now_epoch" '
+    echo "$all_todos" | jq -r --arg now "$now_epoch" --arg today "$today_epoch" --arg yesterday "$yesterday_epoch" '
         # Sort key: last_opened_at if set, else created_at
         def sort_key: (.last_opened_at // .created_at);
         # Order: active parents (with subtasks beneath each), then done parents (with subtasks)
@@ -300,11 +318,14 @@ _format_fzf_lines() {
         else $wt end) as $display_wt |
         (
             (.created_at | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime) as $ts |
-            (($now | tonumber) - $ts) as $diff |
-            if $diff < 86400 then "today"
-            elif $diff < 172800 then "yesterday"
-            elif $diff < 604800 then "\($diff / 86400 | floor)d ago"
-            else (.created_at | split("T")[0])
+            if $ts >= ($today | tonumber) then "today"
+            elif $ts >= ($yesterday | tonumber) then "yesterday"
+            else (
+                (($now | tonumber) - $ts) as $diff |
+                if $diff < 604800 then "\($diff / 86400 | floor)d ago"
+                else (.created_at | split("T")[0])
+                end
+            )
             end
         ) as $age |
         # Project dir: last component of worktree_path (like mb cs)
@@ -365,11 +386,11 @@ _init_worktree_for_todo() {
     fi
 
     if [[ "$has_local" == true ]]; then
-        echo -e "${YELLOW}Branch '${branch}' already exists locally. Using it.${RESET}"
+        echo -e "${YELLOW}Branch '${branch}' already exists locally. Using it.${RESET}" >&2
 
         # Pull latest from remote if available
         if [[ "$has_remote" == true ]]; then
-            echo -e "${DIM}Fetching latest from remote...${RESET}"
+            echo -e "${DIM}Fetching latest from remote...${RESET}" >&2
             git -C "$REPO_ROOT" fetch origin "${branch}" 2>/dev/null || true
         fi
 
@@ -378,11 +399,11 @@ _init_worktree_for_todo() {
         existing_wt=$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null | \
             awk -v branch="$branch" '/^worktree /{wt=$2} /^branch refs\/heads\//{b=$2; sub("refs/heads/","",b); if(b==branch) print wt}')
         if [[ -n "$existing_wt" ]]; then
-            echo -e "${DIM}Found existing worktree at ${existing_wt}${RESET}"
+            echo -e "${DIM}Found existing worktree at ${existing_wt}${RESET}" >&2
             worktree_path="$existing_wt"
         else
             mkdir -p "$(dirname "$worktree_path")"
-            git -C "$REPO_ROOT" worktree add "$worktree_path" "$branch" 2>&1
+            git -C "$REPO_ROOT" worktree add "$worktree_path" "$branch" >&2 2>&1
         fi
 
         # Fast-forward local branch to match remote if possible
@@ -390,17 +411,17 @@ _init_worktree_for_todo() {
             local ff_result
             ff_result=$(git -C "$worktree_path" merge --ff-only "origin/${branch}" 2>&1) || true
             if [[ "$ff_result" == *"Already up to date"* ]]; then
-                echo -e "${DIM}Already up to date with remote.${RESET}"
+                echo -e "${DIM}Already up to date with remote.${RESET}" >&2
             elif [[ -n "$ff_result" ]]; then
-                echo -e "${DIM}Updated to latest remote.${RESET}"
+                echo -e "${DIM}Updated to latest remote.${RESET}" >&2
             fi
         fi
     elif [[ "$has_remote" == true ]]; then
         # Branch exists on remote but not locally — fetch and create local tracking branch
-        echo -e "${DIM}Branch '${branch}' found on remote. Fetching...${RESET}"
+        echo -e "${DIM}Branch '${branch}' found on remote. Fetching...${RESET}" >&2
         git -C "$REPO_ROOT" fetch origin "${branch}" 2>/dev/null
         mkdir -p "$(dirname "$worktree_path")"
-        git -C "$REPO_ROOT" worktree add --track -b "$branch" "$worktree_path" "origin/${branch}" 2>&1
+        git -C "$REPO_ROOT" worktree add --track -b "$branch" "$worktree_path" "origin/${branch}" >&2 2>&1
     else
         # Branch doesn't exist anywhere — create new from master/main
         local base_branch="master"
@@ -408,8 +429,8 @@ _init_worktree_for_todo() {
             base_branch="main"
         fi
         mkdir -p "$(dirname "$worktree_path")"
-        echo -e "${DIM}Creating worktree on branch ${branch} from ${base_branch}...${RESET}"
-        git -C "$REPO_ROOT" worktree add -b "$branch" "$worktree_path" "$base_branch" 2>&1
+        echo -e "${DIM}Creating worktree on branch ${branch} from ${base_branch}...${RESET}" >&2
+        git -C "$REPO_ROOT" worktree add -b "$branch" "$worktree_path" "$base_branch" >&2 2>&1
     fi
 
     # Update the todo record
@@ -615,7 +636,7 @@ _launch_claude() {
             'map(if .id == $id then .session_id = $sid | .session_cwd = $cwd else . end)')
         _write_todos "$updated"
         echo -e "${BLUE}${SYM_SESSION}${RESET} Starting session ${DIM}${session_id}${RESET}"
-        exec claude --session-id "$session_id" "${context_args[@]}" "/rename ${title}"
+        exec claude --session-id "$session_id" "${context_args[@]}"
     fi
 }
 
@@ -942,12 +963,13 @@ _select_todo() {
         'map(if .id == $id then .last_opened_at = $now else . end)')
     _write_todos "$updated"
 
-    local worktree_path branch ticket session_id parent_id
+    local worktree_path branch ticket session_id parent_id github_pr
     worktree_path=$(echo "$todo" | jq -r '.worktree_path // empty')
     branch=$(echo "$todo" | jq -r '.branch // empty')
     ticket=$(echo "$todo" | jq -r '.linear_ticket // empty')
     session_id=$(echo "$todo" | jq -r '.session_id // empty')
     parent_id=$(echo "$todo" | jq -r '.parent_id // empty')
+    github_pr=$(echo "$todo" | jq -r '.github_pr // empty')
 
     # Show current state (omit metadata that matches parent for subtasks)
     echo ""
@@ -970,6 +992,7 @@ _select_todo() {
 
     [[ -n "$ticket" && "$show_ticket" == true ]] && echo -e "  ${MAGENTA}${SYM_DOT}${RESET} Linear    ${ticket}"
     [[ -n "$branch" && "$show_branch" == true ]] && echo -e "  ${CYAN}${SYM_BRANCH}${RESET} Branch    ${branch}"
+    [[ -n "$github_pr" ]] && echo -e "  ${CYAN}${SYM_DOT}${RESET} PR        ${DIM}${github_pr}${RESET}"
     [[ -n "$worktree_path" && "$show_wt" == true ]] && echo -e "  ${DIM}${SYM_DOT} Worktree  ${worktree_path}${RESET}"
     [[ -n "$session_id" ]] && echo -e "  ${GREEN}${SYM_SESSION}${RESET} Session   ${DIM}${session_id}${RESET}"
     echo ""
@@ -985,7 +1008,10 @@ _select_todo() {
     fi
     [[ -n "$worktree_path" && -n "$branch" ]] && options+=("Promote to main repo")
     [[ -z "$worktree_path" && -n "$branch" ]] && options+=("Move to worktree")
-    options+=("Edit notes" "Split into subtask" "Mark as done" "Back")
+    options+=("Edit notes")
+    [[ -n "$ticket" ]] && options+=("Open Linear")
+    [[ -n "$github_pr" || -n "$branch" ]] && options+=("Open GitHub")
+    options+=("Split into subtask" "Mark as done" "Back")
 
     local choice
     choice=$(_gum_choose "What next?" "${options[@]}") || return 0
@@ -1008,6 +1034,27 @@ _select_todo() {
         "Edit notes")
             $NOTES_EDITOR "$notes_path"
             ;;
+        "Open Linear")
+            local ticket_url
+            ticket_url=$(_linear_ticket_url "$ticket")
+            echo -e "${DIM}Opening ${ticket_url}${RESET}"
+            open "$ticket_url"
+            ;;
+        "Open GitHub")
+            if [[ -n "$github_pr" ]]; then
+                echo -e "${DIM}Opening ${github_pr}${RESET}"
+                open "$github_pr"
+            else
+                local branch_url
+                branch_url=$(_github_branch_url "$branch")
+                if [[ -n "$branch_url" ]]; then
+                    echo -e "${DIM}Opening ${branch_url}${RESET}"
+                    open "$branch_url"
+                else
+                    echo -e "${YELLOW}Could not determine GitHub URL.${RESET}"
+                fi
+            fi
+            ;;
         "Split into subtask")
             cmd_split "$id"
             ;;
@@ -1022,10 +1069,11 @@ _select_todo() {
 
 cmd_picker() {
     _check_fzf
+    local show_done=false
 
     while true; do
         local fzf_lines
-        fzf_lines=$(_format_fzf_lines)
+        fzf_lines=$(_format_fzf_lines "$show_done")
 
         # Prepend "New todo" option
         local input="__new__\t\t\t            ✦ New todo"
@@ -1033,9 +1081,11 @@ cmd_picker() {
             input="${input}\n${fzf_lines}"
         fi
 
-        local result
+        local header="TODOs — enter: open · ctrl-d: toggle done · esc: quit"
+
+        local result key
         result=$(echo -e "$input" | fzf \
-            --header "TODOs — select to open, ESC to cancel" \
+            --header "$header" \
             --layout=reverse \
             --height=80% \
             --with-nth=4.. \
@@ -1048,7 +1098,24 @@ cmd_picker() {
             --no-sort \
             --prompt="❯ " \
             --preview-window=hidden \
+            --expect=ctrl-d \
         ) || true
+
+        if [[ -z "$result" ]]; then
+            exit 0
+        fi
+
+        key=$(echo "$result" | head -1)
+        result=$(echo "$result" | tail -n +2)
+
+        if [[ "$key" == "ctrl-d" ]]; then
+            if [[ "$show_done" == "true" ]]; then
+                show_done=false
+            else
+                show_done=true
+            fi
+            continue
+        fi
 
         if [[ -z "$result" ]]; then
             exit 0
@@ -1147,16 +1214,18 @@ cmd_list() {
         exit 0
     fi
 
-    echo -e "${BOLD}Active TODOs:${RESET}"
     echo ""
+    echo -e "  ${BOLD}Active${RESET} ${DIM}(${count})${RESET}"
+    echo -e "  ${DIM}$(printf '%.0s─' {1..50})${RESET}"
 
-    echo "$todos" | jq -r '.[] |
-        "  \(.title)" +
-        (if .linear_ticket then "\n    Linear:   \(.linear_ticket)" else "" end) +
-        (if .branch != "" and .branch != null then "\n    Branch:   \(.branch)" else "" end) +
-        (if .worktree_path != "" and .worktree_path != null then "\n    Worktree: \(.worktree_path)" else "" end) +
-        "\n    Created:  \(.created_at | split("T")[0])\n"
+    echo "$todos" | jq -r --arg G $'\033[0;32m' --arg C $'\033[0;36m' --arg M $'\033[0;35m' --arg D $'\033[2m' --arg B $'\033[1m' --arg R $'\033[0m' '.[] |
+        "\n  \($G)◉\($R) \($B)\(.title)\($R)" +
+        (if (.linear_ticket // "") != "" then "\n    \($M)\(.linear_ticket)\($R)" else "" end) +
+        (if (.branch // "") != "" then "  \($C)\(.branch)\($R)" else "" end) +
+        (if (.worktree_path // "") != "" then "\n    \($D)\(.worktree_path)\($R)" else "" end) +
+        "\n    \($D)\(.created_at | split("T")[0])\($R)"
     '
+    echo ""
 }
 
 cmd_show() {
@@ -1192,15 +1261,17 @@ cmd_archive() {
         exit 0
     fi
 
-    echo -e "${BOLD}Completed TODOs:${RESET}"
     echo ""
+    echo -e "  ${BOLD}Completed${RESET} ${DIM}(${count})${RESET}"
+    echo -e "  ${DIM}$(printf '%.0s─' {1..50})${RESET}"
 
-    echo "$todos" | jq -r '.[] |
-        "  \(.title)" +
-        (if .linear_ticket then "\n    Linear:   \(.linear_ticket)" else "" end) +
-        (if .branch != "" and .branch != null then "\n    Branch:   \(.branch)" else "" end) +
-        "\n    Created:  \(.created_at | split("T")[0])\n"
+    echo "$todos" | jq -r --arg G $'\033[0;32m' --arg M $'\033[0;35m' --arg C $'\033[0;36m' --arg D $'\033[2m' --arg R $'\033[0m' '.[] |
+        "\n  \($G)✓\($R) \($D)\(.title)\($R)" +
+        (if (.linear_ticket // "") != "" then "  \($M)\(.linear_ticket)\($R)" else "" end) +
+        (if (.branch // "") != "" then "  \($C)\(.branch)\($R)" else "" end) +
+        "  \($D)\(.created_at | split("T")[0])\($R)"
     '
+    echo ""
 }
 
 _extract_linear_ticket() {
@@ -1217,10 +1288,12 @@ _extract_linear_ticket() {
 _extract_github_branch() {
     # Extract branch name from a GitHub URL or raw branch name
     # e.g. https://github.com/Maybern/maybern/tree/fix/some-bug -> fix/some-bug
-    # Also handles PR URLs: https://github.com/Maybern/maybern/pull/123 -> stored as-is (branch left empty)
+    # PR URLs return empty — caller should store as github_pr instead
     local input="$1"
     if [[ "$input" == *"github.com"*"/tree/"* ]]; then
         echo "$input" | sed -n 's|.*/tree/\(.*\)|\1|p'
+    elif [[ "$input" == *"github.com"*"/pull/"* ]]; then
+        echo ""
     else
         echo "$input"
     fi
@@ -1239,6 +1312,9 @@ cmd_link() {
     elif [[ -n "$arg1" ]]; then
         # One arg: could be a URL (interactive pick) or an ID (interactive link type)
         if [[ "$arg1" == *"linear.app"* || "$arg1" == *"github.com"* ]]; then
+            url="$arg1"
+        elif [[ "$arg1" == *"/"* || "$arg1" == *.md || "$arg1" == *.txt ]]; then
+            # Looks like a file path — treat as notes link, need an ID
             url="$arg1"
         else
             # Treat as ID — try to resolve, fall back to treating as URL
@@ -1265,6 +1341,12 @@ cmd_link() {
                 'map(if .id == $id then .linear_ticket = $ticket else . end)')
             _write_todos "$updated"
             echo -e "${GREEN}${SYM_CHECK}${RESET} Linked: ${BOLD}${title}${RESET} ${SYM_ARROW} ${MAGENTA}${ticket_id}${RESET}"
+        elif [[ "$url" == *"github.com"*"/pull/"* ]]; then
+            local updated
+            updated=$(_read_todos | jq --arg id "$selected_id" --arg pr "$url" \
+                'map(if .id == $id then .github_pr = $pr else . end)')
+            _write_todos "$updated"
+            echo -e "${GREEN}${SYM_CHECK}${RESET} Linked: ${BOLD}${title}${RESET} ${SYM_ARROW} ${CYAN}${url}${RESET}"
         elif [[ "$url" == *"github.com"*"/tree/"* ]]; then
             local new_branch
             new_branch=$(_extract_github_branch "$url")
@@ -1273,28 +1355,41 @@ cmd_link() {
                 'map(if .id == $id then .branch = $branch else . end)')
             _write_todos "$updated"
             echo -e "${GREEN}${SYM_CHECK}${RESET} Linked: ${BOLD}${title}${RESET} ${SYM_ARROW} ${CYAN}${new_branch}${RESET}"
+        elif [[ "$url" == *"/"* || "$url" == *.md || "$url" == *.txt ]]; then
+            local notes_input="${url/#\~/$HOME}"
+            notes_input="$(realpath "$notes_input" 2>/dev/null || echo "$notes_input")"
+            if [[ ! -f "$notes_input" ]]; then
+                echo -e "${YELLOW}Warning:${RESET} File does not exist yet: ${notes_input}"
+            fi
+            local updated
+            updated=$(_read_todos | jq --arg id "$selected_id" --arg np "$notes_input" \
+                'map(if .id == $id then .notes_path = $np else . end)')
+            _write_todos "$updated"
+            echo -e "${GREEN}${SYM_CHECK}${RESET} Linked: ${BOLD}${title}${RESET} ${SYM_ARROW} ${DIM}${notes_input}${RESET}"
         else
-            echo -e "${RED}Unknown URL.${RESET} Paste a Linear or GitHub branch URL." >&2
+            echo -e "${RED}Unknown URL.${RESET} Paste a Linear URL, GitHub URL, or file path." >&2
             exit 1
         fi
         return
     fi
 
     # No URL — show interactive selector
-    local current_ticket current_branch current_session
+    local current_ticket current_branch current_session current_notes
     current_ticket=$(echo "$todo" | jq -r '.linear_ticket // empty')
     current_branch=$(echo "$todo" | jq -r '.branch // empty')
     current_session=$(echo "$todo" | jq -r '.session_id // empty')
+    current_notes=$(echo "$todo" | jq -r '.notes_path // empty')
 
     echo ""
     echo -e "${BOLD}${title}${RESET}"
     [[ -n "$current_ticket" ]] && echo -e "  ${MAGENTA}${SYM_DOT}${RESET} Linear   ${current_ticket}"
     [[ -n "$current_branch" ]] && echo -e "  ${CYAN}${SYM_BRANCH}${RESET} Branch   ${current_branch}"
     [[ -n "$current_session" ]] && echo -e "  ${GREEN}${SYM_SESSION}${RESET} Session  ${DIM}${current_session}${RESET}"
+    [[ -n "$current_notes" ]] && echo -e "  ${DIM}📄${RESET} Notes    ${DIM}${current_notes}${RESET}"
     echo ""
 
     local choice
-    choice=$(_gum_choose "What to link?" "Linear ticket" "Git branch" "Claude session") || exit 0
+    choice=$(_gum_choose "What to link?" "Linear ticket" "Git branch" "Claude session" "Notes file") || exit 0
 
     case "$choice" in
         "Linear"*)
@@ -1367,6 +1462,24 @@ cmd_link() {
             _write_todos "$updated"
             echo -e "${GREEN}${SYM_CHECK}${RESET} Linked: ${BOLD}${title}${RESET} ${SYM_ARROW} ${GREEN}${SYM_SESSION} ${new_session}${RESET}"
             ;;
+        "Notes"*)
+            [[ -n "$current_notes" ]] && echo -e "${DIM}Current: ${current_notes}${RESET}"
+            local notes_input
+            notes_input=$(_gum_input "Path to notes file (e.g. ~/vault/my-note.md)") || exit 0
+            [[ -z "$notes_input" ]] && exit 0
+            # Expand ~ and resolve to absolute path
+            notes_input="${notes_input/#\~/$HOME}"
+            notes_input="$(realpath "$notes_input" 2>/dev/null || echo "$notes_input")"
+            if [[ ! -f "$notes_input" ]]; then
+                echo -e "${YELLOW}File does not exist yet.${RESET}"
+                _gum_confirm "Link anyway?" || exit 0
+            fi
+            local updated
+            updated=$(_read_todos | jq --arg id "$selected_id" --arg np "$notes_input" \
+                'map(if .id == $id then .notes_path = $np else . end)')
+            _write_todos "$updated"
+            echo -e "${GREEN}${SYM_CHECK}${RESET} Linked: ${BOLD}${title}${RESET} ${SYM_ARROW} ${DIM}${notes_input}${RESET}"
+            ;;
         *) exit 0 ;;
     esac
 }
@@ -1431,48 +1544,140 @@ cmd_open() {
     fi
 }
 
+cmd_rename() {
+    local selected_id="${1:-}"
+    local new_title="${2:-}"
+
+    if [[ -z "$selected_id" ]]; then
+        selected_id=$(_pick_todo "Select todo to rename" "rename ❯ ") || exit 0
+    else
+        selected_id=$(_resolve_id "$selected_id") || exit 1
+    fi
+
+    local todo
+    todo=$(_get_todo "$selected_id")
+    local old_title
+    old_title=$(echo "$todo" | jq -r '.title')
+
+    if [[ -z "$new_title" ]]; then
+        new_title=$(gum input --value "$old_title" --cursor.foreground="4" --prompt "› " --prompt.foreground="4") || exit 0
+        [[ -z "$new_title" ]] && exit 0
+    fi
+
+    local updated
+    updated=$(_read_todos | jq --arg id "$selected_id" --arg title "$new_title" \
+        'map(if .id == $id then .title = $title else . end)')
+    _write_todos "$updated"
+
+    echo -e "${GREEN}${SYM_CHECK}${RESET} Renamed: ${DIM}${old_title}${RESET} ${SYM_ARROW} ${BOLD}${new_title}${RESET}"
+}
+
+cmd_delete() {
+    local selected_id="${1:-}"
+    local force="${2:-}"
+
+    if [[ -z "$selected_id" ]]; then
+        selected_id=$(_pick_todo "Select todo to delete" "delete ❯ ") || exit 0
+    else
+        selected_id=$(_resolve_id "$selected_id") || exit 1
+    fi
+
+    local todo
+    todo=$(_get_todo "$selected_id")
+    local title worktree_path branch notes_path session_id parent_id
+    title=$(echo "$todo" | jq -r '.title')
+    worktree_path=$(echo "$todo" | jq -r '.worktree_path // empty')
+    branch=$(echo "$todo" | jq -r '.branch // empty')
+    notes_path=$(echo "$todo" | jq -r '.notes_path // empty')
+    session_id=$(echo "$todo" | jq -r '.session_id // empty')
+    parent_id=$(echo "$todo" | jq -r '.parent_id // empty')
+
+    if [[ "$force" != "--force" ]]; then
+        echo -e "${RED}Delete:${RESET} ${BOLD}${title}${RESET}"
+        [[ -n "$worktree_path" ]] && echo -e "  ${DIM}Will remove worktree: ${worktree_path}${RESET}"
+        [[ -n "$branch" ]] && echo -e "  ${DIM}Will delete branch: ${branch}${RESET}"
+        [[ -n "$notes_path" ]] && echo -e "  ${DIM}Will delete notes: ${notes_path}${RESET}"
+        _gum_confirm "Delete this todo and all related data?" || exit 0
+    fi
+
+    # Remove worktree
+    if [[ -n "$worktree_path" && -d "$worktree_path" && -n "$REPO_ROOT" ]]; then
+        git -C "$REPO_ROOT" worktree remove "$worktree_path" --force 2>/dev/null || true
+        echo -e "${DIM}Removed worktree${RESET}"
+    fi
+
+    # Delete branch
+    if [[ -n "$branch" && "$branch" != http* && -n "$REPO_ROOT" ]]; then
+        if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/${branch}" 2>/dev/null; then
+            git -C "$REPO_ROOT" branch -D "$branch" 2>/dev/null || true
+            echo -e "${DIM}Deleted branch ${branch}${RESET}"
+        fi
+    fi
+
+    # Delete notes directory
+    if [[ -n "$notes_path" ]]; then
+        local notes_dir
+        notes_dir=$(dirname "$notes_path")
+        if [[ -d "$notes_dir" && "$notes_dir" == "${NOTES_DIR}/"* ]]; then
+            rm -rf "$notes_dir"
+            echo -e "${DIM}Deleted notes${RESET}"
+        fi
+    fi
+
+    # Delete subtasks first
+    local subtask_ids
+    subtask_ids=$(_read_todos | jq -r --arg pid "$selected_id" '[.[] | select(.parent_id == $pid) | .id] | .[]')
+    for sid in $subtask_ids; do
+        cmd_delete "$sid" "--force"
+    done
+
+    # Remove from todos.json
+    local updated
+    updated=$(_read_todos | jq --arg id "$selected_id" '[.[] | select(.id != $id)]')
+    _write_todos "$updated"
+
+    echo -e "${GREEN}${SYM_CHECK}${RESET} Deleted: ${BOLD}${title}${RESET}"
+}
+
 cmd_help() {
-    echo "todo — Minimal task manager optimized for Claude Code."
     echo ""
-    echo "Each todo has a notes.md that gets injected into Claude's context when"
-    echo "you start a session, so Claude always knows what you're working on."
-    echo "All todo commands are accessible by Claude via the CLI."
+    echo -e "\033[0;36m  ▄▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄   ▄▄▄▄▄\033[0m"
+    echo -e "\033[0;36m    █    █   █ █    █ █   █\033[0m"
+    echo -e "\033[0;36m    █    █   █ █    █ █   █\033[0m"
+    echo -e "\033[0;36m    █    █▄▄▄█ █▄▄▄▀  █▄▄▄█\033[0m"
     echo ""
-    echo -e "${BOLD}Commands:${RESET} (all commands accept optional [id] to skip interactive picker)"
-    echo "  todo                          Open fzf picker (create or select a todo)"
-    echo "  todo new \"title\"              Create a new todo"
-    echo "  todo done [id]               Mark a todo as done"
-    echo "  todo split [id] [\"title\"]     Split a todo into a subtask"
-    echo "  todo show [id]               Print absolute path to notes.md"
-    echo "  todo edit [id]               Open notes.md in default app"
-    echo "  todo get <id>                Print todo as JSON"
-    echo "  todo note <id> \"text\"         Append text to a todo's notes"
-    echo "  todo link [id] [url]         Link a Linear/GitHub URL or session"
-    echo "  todo open                    Open Linear ticket or GitHub branch in browser"
-    echo "  todo list                    List all active todos"
-    echo "  todo archive                 Show completed todos"
-    echo "  todo help                    Show this help"
+    echo -e "  ${DIM}Minimal task manager for Claude Code${RESET}"
+    echo -e "  ${DIM}Handles note injections, Claude sessions and worktree management.${RESET}"
+    echo -e "  ${DIM}All commands work non-interactively for AI agents.${RESET}"
     echo ""
-    echo -e "${BOLD}Workflow:${RESET}"
-    echo "  1. Create a todo:          todo new \"Fix the bug\""
-    echo "  2. Select it from picker:  todo"
-    echo "     -> Shows metadata and offers to edit notes, start/resume Claude session"
-    echo "  3. Optionally link:        todo link linear  (or branch)"
-    echo "  4. Open in browser:        todo open"
-    echo "  5. Mark complete:          todo done"
+    echo -e "  ${DIM}$(printf '%.0s─' {1..54})${RESET}"
     echo ""
-    echo -e "${BOLD}Session options when starting Claude:${RESET}"
-    echo "  - Create a new worktree (new branch off master)"
-    echo "  - Start Claude in current directory (no worktree)"
-    echo "  - Resume an existing session if one is found"
+    echo -e "  ${BOLD}Interactive${RESET}"
     echo ""
-    echo -e "${BOLD}Environment:${RESET}"
-    echo "  TODO_REPO    Override git repo root (default: auto-detected)"
-    echo "  TODO_EDITOR  Editor for notes (default: \$VISUAL or \$EDITOR or open)"
+    echo -e "  ${CYAN}todo${RESET}                            Open interactive app"
+    echo -e "  ${CYAN}todo edit${RESET} ${DIM}[id]${RESET}                  Open notes in editor"
+    echo -e "  ${CYAN}todo link${RESET} ${DIM}[id]${RESET}                 Link Linear/GitHub/notes"
+    echo -e "  ${CYAN}todo open${RESET}                       Open links in browser"
     echo ""
-    echo -e "${BOLD}Data:${RESET}"
-    echo "  ~/.claude-todos/todos.json    Todo records"
-    echo "  ~/.claude-todos/notes/<id>/   Notes for each todo"
+    echo -e "  ${BOLD}Non-interactive${RESET} ${DIM}(AI-friendly)${RESET}"
+    echo ""
+    echo -e "  ${CYAN}todo new${RESET} ${DIM}\"title\"${RESET}                Create a new todo"
+    echo -e "  ${CYAN}todo done${RESET} ${DIM}<id>${RESET}                  Mark as done"
+    echo -e "  ${CYAN}todo rename${RESET} ${DIM}<id> \"title\"${RESET}        Rename a todo"
+    echo -e "  ${CYAN}todo delete${RESET} ${DIM}<id> [--force]${RESET}     Delete todo and all data"
+    echo -e "  ${CYAN}todo note${RESET} ${DIM}<id> \"text\"${RESET}           Append to notes"
+    echo -e "  ${CYAN}todo get${RESET} ${DIM}<id>${RESET}                   Print todo as JSON"
+    echo -e "  ${CYAN}todo show${RESET} ${DIM}<id>${RESET}                  Print notes path"
+    echo -e "  ${CYAN}todo split${RESET} ${DIM}<id> \"title\"${RESET}         Create subtask"
+    echo -e "  ${CYAN}todo link${RESET} ${DIM}<id> <url|path>${RESET}      Link Linear/GitHub/notes"
+    echo -e "  ${CYAN}todo list${RESET}                       List active todos"
+    echo -e "  ${CYAN}todo archive${RESET}                    Show completed todos"
+    echo ""
+    echo -e "  ${DIM}$(printf '%.0s─' {1..54})${RESET}"
+    echo ""
+    echo -e "  ${BOLD}Config${RESET}  ${DIM}~/.config/claude-todo/settings.json${RESET}"
+    echo -e "  ${BOLD}Data${RESET}    ${DIM}~/.claude-todos/${RESET}"
+    echo ""
 }
 
 # ---------------------------------------------------------------------------
@@ -1528,6 +1733,14 @@ case "${1:-}" in
         ;;
     archive)
         cmd_archive
+        ;;
+    rename|mv)
+        shift
+        cmd_rename "${1:-}" "${2:-}"
+        ;;
+    delete|rm)
+        shift
+        cmd_delete "${1:-}" "${2:-}"
         ;;
     help|--help|-h)
         cmd_help

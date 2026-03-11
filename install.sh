@@ -64,12 +64,12 @@ else
 fi
 
 # Settings template
-if [[ ! -f "${CONFIG_DIR}/settings.sh" ]]; then
+if [[ ! -f "${CONFIG_DIR}/settings.json" ]]; then
     mkdir -p "$CONFIG_DIR"
-    cp "${SCRIPT_DIR}/settings.sh" "${CONFIG_DIR}/settings.sh"
-    echo -e "${GREEN}✓${RESET} Created ${CONFIG_DIR}/settings.sh"
+    cp "${SCRIPT_DIR}/settings.json" "${CONFIG_DIR}/settings.json"
+    echo -e "${GREEN}✓${RESET} Created ${CONFIG_DIR}/settings.json"
 else
-    echo -e "${DIM}Settings already exist at ${CONFIG_DIR}/settings.sh${RESET}"
+    echo -e "${DIM}Settings already exist at ${CONFIG_DIR}/settings.json${RESET}"
 fi
 
 # Check PATH
