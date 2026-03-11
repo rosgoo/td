@@ -1383,22 +1383,24 @@ cmd_link() {
     fi
 
     # No URL — show interactive selector
-    local current_ticket current_branch current_session current_notes
+    local current_ticket current_branch current_session current_notes current_pr
     current_ticket=$(echo "$todo" | jq -r '.linear_ticket // empty')
     current_branch=$(echo "$todo" | jq -r '.branch // empty')
     current_session=$(echo "$todo" | jq -r '.session_id // empty')
     current_notes=$(echo "$todo" | jq -r '.notes_path // empty')
+    current_pr=$(echo "$todo" | jq -r '.github_pr // empty')
 
     echo ""
     echo -e "${BOLD}${title}${RESET}"
     [[ -n "$current_ticket" ]] && echo -e "  ${MAGENTA}${SYM_DOT}${RESET} Linear   ${current_ticket}"
     [[ -n "$current_branch" ]] && echo -e "  ${CYAN}${SYM_BRANCH}${RESET} Branch   ${current_branch}"
+    [[ -n "$current_pr" ]] && echo -e "  ${CYAN}${SYM_DOT}${RESET} PR       ${DIM}${current_pr}${RESET}"
     [[ -n "$current_session" ]] && echo -e "  ${GREEN}${SYM_SESSION}${RESET} Session  ${DIM}${current_session}${RESET}"
     [[ -n "$current_notes" ]] && echo -e "  ${DIM}📄${RESET} Plan     ${DIM}${current_notes}${RESET}"
     echo ""
 
     local choice
-    choice=$(_gum_choose "What to link?" "Linear ticket" "Git branch" "Claude session" "Plan file") || return 0
+    choice=$(_gum_choose "What to link?" "Linear ticket" "Git branch" "GitHub PR" "Claude session" "Plan file") || return 0
 
     case "$choice" in
         "Linear"*)
@@ -1459,6 +1461,23 @@ cmd_link() {
             fi
             _write_todos "$updated"
             echo -e "${GREEN}${SYM_CHECK}${RESET} Linked: ${BOLD}${title}${RESET} ${SYM_ARROW} ${CYAN}${new_branch}${RESET}"
+            ;;
+        "GitHub"*)
+            local current_pr
+            current_pr=$(echo "$todo" | jq -r '.github_pr // empty')
+            [[ -n "$current_pr" ]] && echo -e "${DIM}Current: ${current_pr}${RESET}"
+            local pr_input
+            pr_input=$(_gum_input "GitHub PR URL") || return 0
+            [[ -z "$pr_input" ]] && return 0
+            if [[ "$pr_input" != *"github.com"*"/pull/"* ]]; then
+                echo -e "${RED}Not a valid GitHub PR URL.${RESET}" >&2
+                return 1
+            fi
+            local updated
+            updated=$(_read_todos | jq --arg id "$selected_id" --arg pr "$pr_input" \
+                'map(if .id == $id then .github_pr = $pr else . end)')
+            _write_todos "$updated"
+            echo -e "${GREEN}${SYM_CHECK}${RESET} Linked: ${BOLD}${title}${RESET} ${SYM_ARROW} ${CYAN}${pr_input}${RESET}"
             ;;
         "Claude"*)
             [[ -n "$current_session" ]] && echo -e "${DIM}Current: ${current_session}${RESET}"
