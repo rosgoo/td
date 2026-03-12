@@ -66,7 +66,7 @@ cmd_split() {
 
     # Pick parent todo if not provided
     if [[ -z "$parent_id" ]]; then
-        parent_id=$(_pick_todo "Select todo to split" "split ❯ ") || exit 0
+        parent_id=$(_pick_todo "Select parent todo" "add ❯ ") || exit 0
     else
         parent_id=$(_resolve_id "$parent_id") || exit 1
     fi
@@ -79,7 +79,7 @@ cmd_split() {
     parent_wt=$(echo "$parent" | jq -r '.worktree_path // empty')
 
     if [[ -z "$title" ]]; then
-        echo -e "${DIM}Splitting: ${parent_title}${RESET}"
+        echo -e "${DIM}Adding subtask to: ${parent_title}${RESET}"
         title=$(_gum_input "Subtask title...") || return 0
         if [[ -z "$title" ]]; then
             return 0
@@ -777,7 +777,7 @@ _select_todo() {
     options+=("Link")
     [[ -n "$ticket" ]] && options+=("Open Linear")
     [[ -n "$github_pr" || -n "$branch" ]] && options+=("Open GitHub")
-    options+=("Split into subtask" "Mark as done" "Back")
+    options+=("Add subtask" "Mark as done" "Back")
 
     local choice
     choice=$(_gum_choose "What next?" "${options[@]}") || return 0
@@ -824,7 +824,7 @@ _select_todo() {
                 fi
             fi
             ;;
-        "Split into subtask")
+        "Add subtask")
             cmd_split "$id"
             ;;
         "Mark as done")
@@ -908,7 +908,15 @@ cmd_picker() {
 }
 
 # ---------------------------------------------------------------------------
-# todo help — Show usage
+# td browse — Open the notes directory in $EDITOR
+# ---------------------------------------------------------------------------
+
+cmd_browse() {
+    $NOTES_EDITOR "$NOTES_DIR"
+}
+
+# ---------------------------------------------------------------------------
+# td help — Show usage
 # ---------------------------------------------------------------------------
 
 cmd_help() {
@@ -930,6 +938,7 @@ cmd_help() {
     echo -e "  ${CYAN}td edit${RESET} ${DIM}[id]${RESET}                    Open plan in editor"
     echo -e "  ${CYAN}td link${RESET} ${DIM}[id]${RESET}                   Link Linear/GitHub/plan"
     echo -e "  ${CYAN}td open${RESET}                         Open links in browser"
+    echo -e "  ${CYAN}td browse${RESET}                       Open notes dir in editor"
     echo ""
     echo -e "  ${BOLD}Non-interactive${RESET} ${DIM}(AI-friendly)${RESET}"
     echo ""

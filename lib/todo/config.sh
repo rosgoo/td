@@ -13,6 +13,9 @@ if [[ -f "$TODO_SETTINGS" ]] && command -v jq &>/dev/null; then
     : "${TODO_DATA_DIR:=$(_s '.data_dir')}"
     : "${TODO_REPO:=$(_s '.repo')}"
     : "${TODO_EDITOR:=$(_s '.editor')}"
+    : "${TODO_LINEAR_ORG:=$(_s '.linear_org')}"
+    : "${TODO_WORKTREE_DIR:=$(_s '.worktree_dir')}"
+    : "${TODO_BRANCH_PREFIX:=$(_s '.branch_prefix')}"
     unset -f _s
 fi
 
@@ -23,6 +26,9 @@ TODOS_FILE="${DATA_DIR}/todos.json"
 NOTES_DIR="${DATA_DIR}/notes"
 REPO_ROOT="${TODO_REPO:-$(git rev-parse --show-toplevel 2>/dev/null || echo "")}"
 NOTES_EDITOR="${TODO_EDITOR:-${VISUAL:-${EDITOR:-open}}}"
+LINEAR_ORG="${TODO_LINEAR_ORG:-}"
+WORKTREE_DIR="${TODO_WORKTREE_DIR:-.claude/worktrees}"
+BRANCH_PREFIX="${TODO_BRANCH_PREFIX:-todo}"
 
 # --- Terminal colors --------------------------------------------------------
 

@@ -14,15 +14,14 @@ Each todo has a `plan.md` file that gets injected into Claude's context when you
 ### Homebrew
 
 ```bash
-brew tap <user>/tap
-brew install todo
+brew install rosgoo/tap/td
 ```
 
 ### Manual
 
 ```bash
-git clone <repo-url> ~/Dev/claude-todo
-cd ~/Dev/claude-todo
+git clone https://github.com/rosgoo/td.git
+cd td
 ./install.sh
 ```
 
@@ -115,7 +114,7 @@ td link abc123 ~/vault/my-notes.md                    # External notes file
 
 | Command | Description |
 |---------|-------------|
-| `td split [id] ["title"]` | Create a subtask under a parent todo |
+| `td split [id] ["title"]` | Add a subtask under a parent todo |
 
 Subtasks inherit their parent's branch, worktree, and Linear ticket. Metadata that matches the parent is deduplicated in the picker view.
 
@@ -123,6 +122,7 @@ Subtasks inherit their parent's branch, worktree, and Linear ticket. Metadata th
 
 | Command | Description |
 |---------|-------------|
+| `td browse` | Open notes directory in your editor |
 | `td version` | Print version |
 | `td help` | Show help |
 
@@ -212,7 +212,10 @@ Settings live at `~/.config/claude-todo/settings.json`:
 {
   "data_dir": "~/.claude-todos",
   "repo": "",
-  "editor": ""
+  "editor": "",
+  "linear_org": "",
+  "worktree_dir": ".claude/worktrees",
+  "branch_prefix": "todo"
 }
 ```
 
@@ -221,8 +224,11 @@ Settings live at `~/.config/claude-todo/settings.json`:
 | `data_dir` | Where todos and notes are stored | `~/.claude-todos` |
 | `repo` | Git repo root (auto-detected if empty) | auto |
 | `editor` | Editor for notes | `$VISUAL` / `$EDITOR` / `open` |
+| `linear_org` | Linear organization slug (for ticket URLs) | _(disabled)_ |
+| `worktree_dir` | Worktree directory relative to repo root | `.claude/worktrees` |
+| `branch_prefix` | Prefix for auto-created branches | `todo` |
 
-Environment variables override settings: `TODO_DATA_DIR`, `TODO_REPO`, `TODO_EDITOR`.
+Environment variables override settings: `TODO_DATA_DIR`, `TODO_REPO`, `TODO_EDITOR`, `TODO_LINEAR_ORG`, `TODO_WORKTREE_DIR`, `TODO_BRANCH_PREFIX`.
 
 ## Data
 

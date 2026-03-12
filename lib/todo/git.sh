@@ -16,7 +16,7 @@ _require_repo() {
 # --- Path helpers -----------------------------------------------------------
 
 _worktree_dir() {
-    echo "${REPO_ROOT}/.claude/worktrees"
+    echo "${REPO_ROOT}/${WORKTREE_DIR}"
 }
 
 # --- URL construction -------------------------------------------------------
@@ -48,10 +48,10 @@ _github_branch_url() {
 _linear_ticket_url() {
     # Converts a ticket ID like "CORE-12207" to a Linear app URL.
     local ticket="$1"
-    if [[ -n "$ticket" ]]; then
+    if [[ -n "$ticket" && -n "$LINEAR_ORG" ]]; then
         local lower
         lower=$(echo "$ticket" | tr '[:upper:]' '[:lower:]')
-        echo "https://linear.app/maybern/issue/${lower}"
+        echo "https://linear.app/${LINEAR_ORG}/issue/${lower}"
     fi
 }
 

@@ -1,5 +1,8 @@
 {
   "data_dir": "~/.claude-todos",
   "repo": "",
-  "editor": ""
+  "editor": "",
+  "linear_org": "",
+  "worktree_dir": ".claude/worktrees",
+  "branch_prefix": "todo"
 }

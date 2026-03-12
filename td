@@ -81,6 +81,7 @@ case "${1:-}" in
     show)        shift; cmd_show "${1:-}" ;;
     list|ls)     cmd_list ;;
     archive)     cmd_archive ;;
+    browse)      cmd_browse ;;
     rename|mv)   shift; cmd_rename "${1:-}" "${2:-}" ;;
     delete|rm)   shift; cmd_delete "${1:-}" "${2:-}" ;;
     version|--version|-v) echo "td ${TODO_VERSION}" ;;

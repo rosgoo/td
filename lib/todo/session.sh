@@ -26,7 +26,7 @@ _init_worktree_for_todo() {
 
     # If the todo already has a branch set (via link), use it
     if [[ -z "$branch" ]]; then
-        branch="todo/${slug}"
+        branch="${BRANCH_PREFIX}/${slug}"
     fi
 
     # Determine where the branch exists
