@@ -104,27 +104,51 @@ _format_fzf_lines() {
     yesterday_epoch=$((today_epoch - 86400))
 
     # Single jq call renders every line. The jq program:
-    #   1. Groups todos: active parents (sorted by last_opened_at), each followed
-    #      by its subtasks, then done parents with their subtasks.
+    #   1. Builds a tree: root todos at top, descendants nested below at any depth.
     #   2. For each todo, formats fixed-width columns with ANSI escape codes.
-    #   3. Subtasks get a "└─" indent and de-duplicate branch/dir from parent.
+    #   3. Subtasks get "└─" indent scaled by depth, and de-duplicate branch/dir
+    #      when they match their root ancestor.
     echo "$all_todos" | jq -r --arg now "$now_epoch" --arg today "$today_epoch" --arg yesterday "$yesterday_epoch" '
         # Sort key: last_opened_at if set, else created_at
         def sort_key: (.last_opened_at // .created_at);
-        # Order: active parents (with subtasks beneath each), then done parents (with subtasks)
+
         . as $all |
-        def is_child: (.parent_id // "") != "";
+
+        # Walk up parent_id chain to find depth (0 = root)
+        def depth:
+            . as $id |
+            if $id == "" then 0
+            else
+                ([$all[] | select(.id == $id)] | .[0]) as $todo |
+                if $todo == null then 0
+                else 1 + (($todo.parent_id // "") | depth)
+                end
+            end;
+
+        # Walk up to find root ancestor (the top-level parent)
+        def root_ancestor:
+            . as $todo |
+            if ($todo.parent_id // "") == "" then $todo
+            else
+                ([$all[] | select(.id == $todo.parent_id)] | .[0]) as $par |
+                if $par == null then $todo else $par | root_ancestor end
+            end;
+
+        # Recursively emit a todo followed by its children (active first, then done)
+        def emit_tree:
+            . as $node |
+            $node,
+            ( [ $all[] | select(.parent_id == $node.id and .status == "active") ] | sort_by(.created_at) | .[] | emit_tree ),
+            ( [ $all[] | select(.parent_id == $node.id and .status == "done") ] | sort_by(.created_at) | .[] | emit_tree );
+
+        def is_root: (.parent_id // "") == "";
+
+        # Build ordered list: active roots (with descendants), then done roots (with descendants)
         [
-            ( [ $all[] | select(.status == "active" and (is_child | not)) ] | sort_by(sort_key) | reverse | .[] as $p |
-                $p,
-                ( [ $all[] | select(.parent_id == $p.id and .status == "active") ] | sort_by(.created_at) | .[] ),
-                ( [ $all[] | select(.parent_id == $p.id and .status == "done") ] | sort_by(.created_at) | .[] )
-            ),
-            ( [ $all[] | select(.status == "done" and (is_child | not)) ] | sort_by(sort_key) | reverse | .[] as $p |
-                $p,
-                ( [ $all[] | select(.parent_id == $p.id) ] | sort_by(.created_at) | .[] )
-            )
+            ( [ $all[] | select(.status == "active" and is_root) ] | sort_by(sort_key) | reverse | .[] | emit_tree ),
+            ( [ $all[] | select(.status == "done" and is_root) ] | sort_by(sort_key) | reverse | .[] | emit_tree )
         ][] |
+
         (.id) as $id |
         (.title) as $title |
         (.status // "active") as $status |
@@ -133,16 +157,19 @@ _format_fzf_lines() {
         (.linear_ticket // "") as $ticket |
         (.session_id // "") as $session |
         (.parent_id // "") as $pid |
-        ($pid != "") as $is_subtask |
-        # Dedup: hide branch/dir for subtasks when same as parent
+        ($pid | depth) as $depth |
+        ($depth > 0) as $is_subtask |
+
+        # Dedup: hide branch/dir when same as root ancestor
         (if $is_subtask then
-            ([$all[] | select(.id == $pid)] | .[0]) as $par |
-            if $par != null and $branch == ($par.branch // "") then "" else $branch end
+            (. | root_ancestor) as $root |
+            if $root != null and $branch == ($root.branch // "") then "" else $branch end
         else $branch end) as $display_branch |
         (if $is_subtask then
-            ([$all[] | select(.id == $pid)] | .[0]) as $par |
-            if $par != null and $wt == ($par.worktree_path // "") then "" else $wt end
+            (. | root_ancestor) as $root |
+            if $root != null and $wt == ($root.worktree_path // "") then "" else $wt end
         else $wt end) as $display_wt |
+
         (
             (.created_at | strptime("%Y-%m-%dT%H:%M:%SZ") | mktime) as $ts |
             if $ts >= ($today | tonumber) then "today"
@@ -155,23 +182,33 @@ _format_fzf_lines() {
             )
             end
         ) as $age |
-        # Project dir: last component of worktree_path (like mb cs)
+
+        # Project dir: last component of worktree_path
         (if $display_wt != "" then ($display_wt | split("/") | .[-1]) else "" end) as $dir |
-        # Subtask indent prefix
-        (if $is_subtask then "└─ " else "" end) as $indent |
-        (if $is_subtask then 77 else 80 end) as $tw |
-        # Fixed-width columns: age(10)  icon(2) [indent] title(77-80)  dir(16)  branch(30)
+
+        # Indent: 3 spaces per depth level, then "└─ " for subtasks
+        (if $is_subtask then
+            (" " * (($depth - 1) * 3)) + "└─ "
+        else "" end) as $indent |
+        # Title width shrinks with indent (3 chars per depth level)
+        (80 - ($depth * 3)) as $tw |
+
+        # Fixed-width columns: age(10)  icon(2) [indent] title  dir(16)  branch(30)
         ($age | .[:10] | . + (" " * (10 - length))) as $age_col |
         (if $ticket != "" then ($ticket + " " + $title) else $title end) as $full_title |
-        ($full_title | .[:$tw] | . + (" " * ($tw - length))) as $title_col |
+        (if $tw > 0 then ($full_title | .[:$tw] | . + (" " * ([($tw - length), 0] | max))) else "" end) as $title_col |
         ($dir | .[:16] | . + (" " * (16 - length))) as $dir_col |
         ($display_branch | .[:30] | . + (" " * (30 - length))) as $branch_col |
+
         if $status == "done" then
             "\($id)\t\($wt)\t\($branch)\t\u001b[2;9m\($age_col)  \u001b[0;32m✓\u001b[2;9m \($indent)\($title_col)  \($dir_col)  \($branch_col)\u001b[0m"
         else
             (if $session != "" then "\u001b[0;32m◉\u001b[0m " else "  " end) as $icon |
             (if $ticket != "" then
-                "\u001b[0;35m\($ticket)\u001b[0m " + (($title | .[:$tw - ($ticket | length) - 1]) as $t | $t + (" " * ($tw - ($ticket | length) - 1 - ($t | length))))
+                (if $tw > 0 then
+                    ($tw - ($ticket | length) - 1) as $ttw |
+                    "\u001b[0;35m\($ticket)\u001b[0m " + (($title | .[:$ttw]) as $t | $t + (" " * ([($ttw - ($t | length)), 0] | max)))
+                else "" end)
             else
                 $title_col
             end) as $colored_title |
