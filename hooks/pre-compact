@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# pre-compact hook for todo
+# Runs before context compaction to save conversation notes to the todo's plan.md.
+#
+# Input (JSON on stdin):
+#   session_id, transcript_path, trigger (auto|manual), cwd, etc.
+#
+# This script:
+#   1. Finds the todo matching the current session_id
+#   2. Reads the transcript (user + assistant messages)
+#   3. Extracts a condensed log of the conversation since last compact
+#   4. Appends it to the todo's plan.md under a "## Session Notes" section
+
+TODOS_FILE="${TODOS_FILE:-${HOME}/.claude-todos/todos.json}"
+
+# Read hook payload from stdin
+payload=$(cat)
+
+session_id=$(echo "$payload" | jq -r '.session_id // empty')
+transcript_path=$(echo "$payload" | jq -r '.transcript_path // empty')
+trigger=$(echo "$payload" | jq -r '.trigger // "auto"')
+
+# Need both session_id and transcript to proceed
+if [[ -z "$session_id" || -z "$transcript_path" || ! -f "$transcript_path" ]]; then
+    exit 0
+fi
+
+# Look up the todo by session_id
+if [[ ! -f "$TODOS_FILE" ]]; then
+    exit 0
+fi
+
+notes_path=$(jq -r --arg sid "$session_id" \
+    '.[] | select(.session_id == $sid) | .notes_path // empty' "$TODOS_FILE")
+
+if [[ -z "$notes_path" || ! -f "$notes_path" ]]; then
+    exit 0
+fi
+
+# Extract conversation messages from transcript
+# Format: timestamp + role + first ~200 chars of content
+# Skip system messages and tool calls, keep user prompts and assistant responses
+timestamp=$(date '+%Y-%m-%d %H:%M')
+
+# Build a compact conversation excerpt from the transcript
+# - User messages: full content (usually short prompts)
+# - Assistant messages: first 300 chars (truncate long code/tool output)
+excerpt=$(jq -r '
+    select(.type == "user" or .type == "assistant") |
+    if .message then
+        .type as $role |
+        (.message.content // "") |
+        if type == "array" then
+            map(select(.type == "text") | .text) | join(" ")
+        elif type == "string" then
+            .
+        else
+            ""
+        end |
+        if length > 0 then
+            if $role == "assistant" then
+                if length > 300 then
+                    .[:300] + "..."
+                else
+                    .
+                end
+            else
+                .
+            end |
+            "**\($role)**: \(gsub("\n"; " ") | gsub("  +"; " "))"
+        else
+            empty
+        end
+    else
+        empty
+    end
+' "$transcript_path" 2>/dev/null)
+
+if [[ -z "$excerpt" ]]; then
+    exit 0
+fi
+
+# Count lines for a sanity cap — keep last 50 exchanges max
+excerpt=$(echo "$excerpt" | tail -50)
+
+# Check if "## Session Notes" section already exists
+if grep -q "^## Session Notes" "$notes_path" 2>/dev/null; then
+    # Append to existing section
+    printf '\n### %s (%s compact)\n\n%s\n' "$timestamp" "$trigger" "$excerpt" >> "$notes_path"
+else
+    # Create the section
+    printf '\n## Session Notes\n\n### %s (%s compact)\n\n%s\n' "$timestamp" "$trigger" "$excerpt" >> "$notes_path"
+fi
+
+exit 0

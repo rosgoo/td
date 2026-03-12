@@ -1,10 +1,24 @@
-# todo
+```
+  ▄▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄   ▄▄▄▄▄
+    █    █   █ █    █ █   █
+    █    █   █ █    █ █   █
+    █    █▄▄▄█ █▄▄▄▀  █▄▄▄█
+```
 
-Minimal task manager optimized for [Claude Code](https://claude.ai/code).
+Minimal task manager for [Claude Code](https://claude.ai/code).
 
-Each todo has a `notes.md` file that gets injected into Claude's context when you start a session, so Claude always knows what you're working on. All commands are accessible by Claude via the CLI — no interactive UI required.
+Each todo has a `plan.md` file that gets injected into Claude's context when you start a session, so Claude always knows what you're working on. All commands are accessible by Claude via the CLI — no interactive UI required.
 
 ## Install
+
+### Homebrew
+
+```bash
+brew tap <user>/tap
+brew install todo
+```
+
+### Manual
 
 ```bash
 git clone <repo-url> ~/Dev/claude-todo
@@ -12,10 +26,32 @@ cd ~/Dev/claude-todo
 ./install.sh
 ```
 
-This installs dependencies (`jq`, `fzf`, `gum`) via Homebrew, symlinks `todo` to `~/.local/bin`, and copies the default settings. Make sure `~/.local/bin` is in your `PATH`:
+This installs dependencies (`jq`, `fzf`, `gum`) via Homebrew, copies lib files to `~/.local/lib/todo/`, and symlinks `td` to `~/.local/bin`. Make sure `~/.local/bin` is in your `PATH`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
+```
+
+### Post-install: Claude Code hooks
+
+Add the pre-compact hook to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "td-pre-compact",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
 ```
 
 ### Dependencies
@@ -30,9 +66,9 @@ export PATH="$HOME/.local/bin:$PATH"
 ## Quick Start
 
 ```bash
-todo new "Fix the login bug"   # Create a todo
-todo                            # Open the picker — select to start working
-todo done                       # Mark it as done when finished
+td new "Fix the login bug"   # Create a todo
+td                            # Open the picker — select to start working
+td done                       # Mark it as done when finished
 ```
 
 ## Commands
@@ -43,45 +79,52 @@ All commands accept an optional `[id]` (or ID prefix) to skip the interactive pi
 
 | Command | Description |
 |---------|-------------|
-| `todo` | Open the fzf picker (create or select a todo) |
-| `todo new "title"` | Create a new todo |
-| `todo done [id]` | Mark a todo as done (optionally cleans up worktree/branch) |
-| `todo delete [id]` | Delete a todo and all related data (notes, worktree, branch) |
-| `todo list` | List all active todos |
-| `todo archive` | Show completed todos |
+| `td` | Open the fzf picker (create or select a todo) |
+| `td new "title"` | Create a new todo |
+| `td done [id]` | Mark a todo as done (optionally cleans up worktree/branch) |
+| `td delete [id]` | Delete a todo and all related data (notes, worktree, branch) |
+| `td list` | List all active todos |
+| `td archive` | Show completed todos |
 
 ### Notes
 
 | Command | Description |
 |---------|-------------|
-| `todo edit [id]` | Open notes in your editor |
-| `todo note <id> "text"` | Append text to a todo's notes (non-interactive) |
-| `todo show [id]` | Print the absolute path to notes.md |
+| `td edit [id]` | Open notes in your editor |
+| `td note <id> "text"` | Append text to a todo's notes (non-interactive) |
+| `td show [id]` | Print the absolute path to plan.md |
 
 ### Linking
 
 | Command | Description |
 |---------|-------------|
-| `todo link [id] [url/path]` | Link a Linear ticket, GitHub URL, or notes file |
-| `todo open` | Open Linear ticket or GitHub branch/PR in browser |
-| `todo get <id>` | Print todo as JSON |
+| `td link [id] [url/path]` | Link a Linear ticket, GitHub URL, or notes file |
+| `td open` | Open Linear ticket or GitHub branch/PR in browser |
+| `td get <id>` | Print todo as JSON |
 
-`todo link` auto-detects the type from the input:
+`td link` auto-detects the type from the input:
 
 ```bash
-todo link abc123 https://linear.app/team/CORE-456       # Linear ticket
-todo link abc123 https://github.com/org/repo/pull/789   # GitHub PR
-todo link abc123 https://github.com/org/repo/tree/feat  # Git branch
-todo link abc123 ~/vault/my-notes.md                    # External notes file
+td link abc123 https://linear.app/team/CORE-456       # Linear ticket
+td link abc123 https://github.com/org/repo/pull/789   # GitHub PR
+td link abc123 https://github.com/org/repo/tree/feat  # Git branch
+td link abc123 ~/vault/my-notes.md                    # External notes file
 ```
 
 ### Subtasks
 
 | Command | Description |
 |---------|-------------|
-| `todo split [id] ["title"]` | Create a subtask under a parent todo |
+| `td split [id] ["title"]` | Create a subtask under a parent todo |
 
 Subtasks inherit their parent's branch, worktree, and Linear ticket. Metadata that matches the parent is deduplicated in the picker view.
+
+### Other
+
+| Command | Description |
+|---------|-------------|
+| `td version` | Print version |
+| `td help` | Show help |
 
 ## Picker
 
@@ -117,19 +160,49 @@ Todos can optionally use [git worktrees](https://git-scm.com/docs/git-worktree) 
 
 When you start or resume a Claude session from a todo, the tool:
 
-1. Injects the todo's `notes.md` into Claude's system prompt via `--append-system-prompt`
+1. Injects the todo's `plan.md` into Claude's system prompt via `--append-system-prompt`
 2. For subtasks, also includes the parent's notes for context
 3. Tracks the session ID and working directory so you can resume later
 
-Claude can also use `todo` commands directly to manage work:
+Claude can also use `td` commands directly to manage work:
 
 ```bash
-todo new "Refactor auth middleware"
-todo note abc123 "Decided to use JWT instead of sessions"
-todo link abc123 https://github.com/org/repo/pull/456
-todo done abc123
-todo delete abc123 --force
+td new "Refactor auth middleware"
+td note abc123 "Decided to use JWT instead of sessions"
+td link abc123 https://github.com/org/repo/pull/456
+td done abc123
+td delete abc123 --force
 ```
+
+## Hooks
+
+The installer sets up Claude Code [hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) that integrate with your todo workflow.
+
+### PreCompact — auto-save session notes
+
+Before Claude Code compacts your conversation context (auto or manual), the `pre-compact` hook snapshots the conversation into your todo's `plan.md` under a `## Session Notes` section. Each compact appends a timestamped block with user/assistant messages, so context is never fully lost.
+
+The hook is configured in `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "td-pre-compact",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The hook only activates for sessions that are linked to a todo (matched by `session_id`). Sessions without a todo are unaffected.
 
 ## Configuration
 
@@ -157,7 +230,7 @@ Environment variables override settings: `TODO_DATA_DIR`, `TODO_REPO`, `TODO_EDI
 ~/.claude-todos/
   todos.json              # All todo records
   notes/
-    <id>/notes.md         # Notes for each todo
+    <id>/plan.md          # Notes for each todo (+ session notes appended by hooks)
 ```
 
 Each todo record contains:
@@ -170,7 +243,7 @@ Each todo record contains:
   "status": "active",
   "branch": "todo/fix-the-login-bug",
   "worktree_path": "/path/to/repo/.claude/worktrees/fix-the-login-bug",
-  "notes_path": "~/.claude-todos/notes/1773202250-266f62/notes.md",
+  "notes_path": "~/.claude-todos/notes/1773202250-266f62/plan.md",
   "linear_ticket": "CORE-456",
   "github_pr": "https://github.com/org/repo/pull/789",
   "session_id": "a1b2c3d4-...",
