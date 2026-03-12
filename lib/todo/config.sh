@@ -39,20 +39,16 @@ BRANCH_PREFIX="${TODO_BRANCH_PREFIX:-todo}"
 
 # --- Terminal colors --------------------------------------------------------
 
-if [[ -n "${NO_COLOR:-}" || "${TERM:-}" == "dumb" || "${TODO_NO_COLOR:-}" == "1" ]] || ! [[ -t 1 ]]; then
-    RED='' GREEN='' YELLOW='' BLUE='' MAGENTA='' CYAN='' DIM='' BOLD='' ITALIC='' RESET=''
-else
-    RED='\033[0;31m'
-    GREEN='\033[0;32m'
-    YELLOW='\033[0;33m'
-    BLUE='\033[0;34m'
-    MAGENTA='\033[0;35m'
-    CYAN='\033[0;36m'
-    DIM='\033[2m'
-    BOLD='\033[1m'
-    ITALIC='\033[3m'
-    RESET='\033[0m'
-fi
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+DIM='\033[2m'
+BOLD='\033[1m'
+ITALIC='\033[3m'
+RESET='\033[0m'
 
 # --- Symbols ----------------------------------------------------------------
 

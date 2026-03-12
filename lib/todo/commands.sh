@@ -238,14 +238,15 @@ cmd_list() {
     echo -e "  ${BOLD}Active${RESET} ${DIM}(${count})${RESET}"
     echo -e "  ${DIM}$(printf '%.0s─' {1..50})${RESET}"
 
-    echo "$todos" | jq -r --arg G "$GREEN" --arg C "$CYAN" --arg M "$MAGENTA" --arg D "$DIM" --arg B "$BOLD" --arg R "$RESET" '.[] |
+    echo "$todos" | jq -r '.[] |
         (.id | split("-") | last) as $short_id |
-        "\n  \($G)◉\($R) \($B)\(.title)\($R)  \($D)\($short_id)\($R)" +
-        (if (.linear_ticket // "") != "" then "\n    \($M)\(.linear_ticket)\($R)" else "" end) +
-        (if (.branch // "") != "" then "  \($C)\(.branch)\($R)" else "" end) +
-        (if (.worktree_path // "") != "" then "\n    \($D)\(.worktree_path)\($R)" else "" end) +
-        "\n    \($D)\(.created_at | split("T")[0])\($R)"
-    '
+        "\n  \\033[0;32m◉\\033[0m \\033[1m\(.title)\\033[0m  \\033[2m\($short_id)\\033[0m" +
+        (if (.linear_ticket // "") != "" then "\n    \\033[0;35m\(.linear_ticket)\\033[0m" else "" end) +
+        (if (.branch // "") != "" then "  \\033[0;36m\(.branch)\\033[0m" else "" end) +
+        (if (.github_pr // "") != "" then "  \\033[0;36m\(.github_pr)\\033[0m" else "" end) +
+        (if (.worktree_path // "") != "" then "\n    \\033[2m\(.worktree_path)\\033[0m" else "" end) +
+        "\n    \\033[2m\(.created_at | split("T")[0])\\033[0m"
+    ' | while IFS= read -r line; do printf '%b\n' "$line"; done
     echo ""
 }
 
@@ -268,12 +269,12 @@ cmd_archive() {
     echo -e "  ${BOLD}Completed${RESET} ${DIM}(${count})${RESET}"
     echo -e "  ${DIM}$(printf '%.0s─' {1..50})${RESET}"
 
-    echo "$todos" | jq -r --arg G "$GREEN" --arg M "$MAGENTA" --arg C "$CYAN" --arg D "$DIM" --arg R "$RESET" '.[] |
-        "\n  \($G)✓\($R) \($D)\(.title)\($R)" +
-        (if (.linear_ticket // "") != "" then "  \($M)\(.linear_ticket)\($R)" else "" end) +
-        (if (.branch // "") != "" then "  \($C)\(.branch)\($R)" else "" end) +
-        "  \($D)\(.created_at | split("T")[0])\($R)"
-    '
+    echo "$todos" | jq -r '.[] |
+        "\n  \\033[0;32m✓\\033[0m \\033[2m\(.title)\\033[0m" +
+        (if (.linear_ticket // "") != "" then "  \\033[0;35m\(.linear_ticket)\\033[0m" else "" end) +
+        (if (.branch // "") != "" then "  \\033[0;36m\(.branch)\\033[0m" else "" end) +
+        "  \\033[2m\(.created_at | split("T")[0])\\033[0m"
+    ' | while IFS= read -r line; do printf '%b\n' "$line"; done
     echo ""
 }
 
