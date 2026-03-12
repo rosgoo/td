@@ -5,7 +5,7 @@ set -euo pipefail
 # Tests all user-facing commands and tool interactions.
 # Skips interactive flows (fzf picker, gum prompts) and Claude-specific logic.
 
-TODO_BIN="$(cd "$(dirname "$0")" && pwd)/todo"
+TODO_BIN="$(cd "$(dirname "$0")" && pwd)/td"
 
 # Colors for test output
 GREEN='\033[0;32m'
@@ -104,8 +104,8 @@ test_help() {
     local output
     output=$(todo help)
     assert_contains "shows description" "Minimal task manager" "$output"
-    assert_contains "shows commands" "todo new" "$output"
-    assert_contains "shows environment" "TODO_EDITOR" "$output"
+    assert_contains "shows commands" "td new" "$output"
+    assert_contains "shows environment" "Config" "$output"
 }
 
 test_new() {
@@ -171,7 +171,7 @@ test_show() {
 
     local output
     output=$(todo show "$id")
-    assert_contains "prints notes path" "notes.md" "$output"
+    assert_contains "prints notes path" "plan.md" "$output"
     assert_file_exists "path exists" "$output"
 }
 
@@ -184,7 +184,7 @@ test_list() {
     output=$(todo list)
     assert_contains "shows item A" "List item A" "$output"
     assert_contains "shows item B" "List item B" "$output"
-    assert_contains "shows header" "Active TODOs" "$output"
+    assert_contains "shows header" "Active" "$output"
 }
 
 test_done() {
@@ -212,7 +212,7 @@ test_archive() {
     local output
     output=$(todo archive)
     assert_contains "shows completed item" "Archive test" "$output"
-    assert_contains "shows header" "Completed TODOs" "$output"
+    assert_contains "shows header" "Completed" "$output"
 }
 
 test_link_linear() {

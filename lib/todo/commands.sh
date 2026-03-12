@@ -52,8 +52,13 @@ EOF
         }]')
     _write_todos "$updated"
 
-    echo -e "${GREEN}${SYM_CHECK}${RESET} Created: ${BOLD}${title}${RESET}"
-    echo -e "  ${DIM}Plan: ${notes_path}/plan.md${RESET}"
+    local short_id="${id##*-}"
+    if [[ -n "${TODO_QUIET:-}" ]]; then
+        echo "$id"
+    else
+        echo -e "${GREEN}${SYM_CHECK}${RESET} Created: ${BOLD}${title}${RESET}  ${DIM}${short_id}${RESET}"
+        echo -e "  ${DIM}Next: td edit ${short_id}  ·  td link ${short_id}  ·  td split ${short_id}${RESET}"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -125,8 +130,12 @@ EOF
         }]')
     _write_todos "$updated"
 
-    echo -e "${GREEN}${SYM_CHECK}${RESET} Created subtask: ${BOLD}${title}${RESET}"
-    echo -e "  ${DIM}Parent: ${parent_title}${RESET}"
+    if [[ -n "${TODO_QUIET:-}" ]]; then
+        echo "$id"
+    else
+        echo -e "${GREEN}${SYM_CHECK}${RESET} Created subtask: ${BOLD}${title}${RESET}"
+        echo -e "  ${DIM}Parent: ${parent_title}${RESET}"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -206,8 +215,17 @@ cmd_edit() {
 # ---------------------------------------------------------------------------
 
 cmd_list() {
+    local json_mode=false
+    [[ "${1:-}" == "--json" ]] && json_mode=true
+
     local todos
     todos=$(_active_todos)
+
+    if [[ "$json_mode" == true ]]; then
+        echo "$todos" | jq .
+        return
+    fi
+
     local count
     count=$(echo "$todos" | jq 'length')
 
@@ -220,8 +238,9 @@ cmd_list() {
     echo -e "  ${BOLD}Active${RESET} ${DIM}(${count})${RESET}"
     echo -e "  ${DIM}$(printf '%.0s─' {1..50})${RESET}"
 
-    echo "$todos" | jq -r --arg G $'\033[0;32m' --arg C $'\033[0;36m' --arg M $'\033[0;35m' --arg D $'\033[2m' --arg B $'\033[1m' --arg R $'\033[0m' '.[] |
-        "\n  \($G)◉\($R) \($B)\(.title)\($R)" +
+    echo "$todos" | jq -r --arg G "$GREEN" --arg C "$CYAN" --arg M "$MAGENTA" --arg D "$DIM" --arg B "$BOLD" --arg R "$RESET" '.[] |
+        (.id | split("-") | last) as $short_id |
+        "\n  \($G)◉\($R) \($B)\(.title)\($R)  \($D)\($short_id)\($R)" +
         (if (.linear_ticket // "") != "" then "\n    \($M)\(.linear_ticket)\($R)" else "" end) +
         (if (.branch // "") != "" then "  \($C)\(.branch)\($R)" else "" end) +
         (if (.worktree_path // "") != "" then "\n    \($D)\(.worktree_path)\($R)" else "" end) +
@@ -249,7 +268,7 @@ cmd_archive() {
     echo -e "  ${BOLD}Completed${RESET} ${DIM}(${count})${RESET}"
     echo -e "  ${DIM}$(printf '%.0s─' {1..50})${RESET}"
 
-    echo "$todos" | jq -r --arg G $'\033[0;32m' --arg M $'\033[0;35m' --arg C $'\033[0;36m' --arg D $'\033[2m' --arg R $'\033[0m' '.[] |
+    echo "$todos" | jq -r --arg G "$GREEN" --arg M "$MAGENTA" --arg C "$CYAN" --arg D "$DIM" --arg R "$RESET" '.[] |
         "\n  \($G)✓\($R) \($D)\(.title)\($R)" +
         (if (.linear_ticket // "") != "" then "  \($M)\(.linear_ticket)\($R)" else "" end) +
         (if (.branch // "") != "" then "  \($C)\(.branch)\($R)" else "" end) +
@@ -672,7 +691,7 @@ cmd_open() {
 
     if [[ ${#options[@]} -eq 1 ]]; then
         echo -e "${DIM}Opening ${urls[0]}${RESET}"
-        open "${urls[0]}"
+        _open_url "${urls[0]}"
         exit 0
     fi
 
@@ -682,13 +701,13 @@ cmd_open() {
     if [[ "$choice" == "Open all" ]]; then
         for url in "${urls[@]}"; do
             echo -e "${DIM}Opening ${url}${RESET}"
-            open "$url"
+            _open_url "$url"
         done
     else
         for i in "${!options[@]}"; do
             if [[ "${options[$i]}" == "$choice" ]]; then
                 echo -e "${DIM}Opening ${urls[$i]}${RESET}"
-                open "${urls[$i]}"
+                _open_url "${urls[$i]}"
                 break
             fi
         done
@@ -807,18 +826,18 @@ _select_todo() {
             local ticket_url
             ticket_url=$(_linear_ticket_url "$ticket")
             echo -e "${DIM}Opening ${ticket_url}${RESET}"
-            open "$ticket_url"
+            _open_url "$ticket_url"
             ;;
         "Open GitHub")
             if [[ -n "$github_pr" ]]; then
                 echo -e "${DIM}Opening ${github_pr}${RESET}"
-                open "$github_pr"
+                _open_url "$github_pr"
             else
                 local branch_url
                 branch_url=$(_github_branch_url "$branch")
                 if [[ -n "$branch_url" ]]; then
                     echo -e "${DIM}Opening ${branch_url}${RESET}"
-                    open "$branch_url"
+                    _open_url "$branch_url"
                 else
                     echo -e "${YELLOW}Could not determine GitHub URL.${RESET}"
                 fi
@@ -921,10 +940,10 @@ cmd_browse() {
 
 cmd_help() {
     echo ""
-    echo -e "\033[0;36m  ▄▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄   ▄▄▄▄▄\033[0m"
-    echo -e "\033[0;36m    █    █   █ █    █ █   █\033[0m"
-    echo -e "\033[0;36m    █    █   █ █    █ █   █\033[0m"
-    echo -e "\033[0;36m    █    █▄▄▄█ █▄▄▄▀  █▄▄▄█\033[0m"
+    echo -e "${CYAN}  ▄▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄   ▄▄▄▄▄${RESET}"
+    echo -e "${CYAN}    █    █   █ █    █ █   █${RESET}"
+    echo -e "${CYAN}    █    █   █ █    █ █   █${RESET}"
+    echo -e "${CYAN}    █    █▄▄▄█ █▄▄▄▀  █▄▄▄█${RESET}"
     echo ""
     echo -e "  ${DIM}Minimal task manager for Claude Code${RESET}  ${DIM}v${TODO_VERSION}${RESET}"
     echo -e "  ${DIM}Handles plan injections, Claude sessions and worktree management.${RESET}"

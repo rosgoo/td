@@ -5,9 +5,18 @@
     █    █▄▄▄█ █▄▄▄▀  █▄▄▄█
 ```
 
-Minimal task manager for [Claude Code](https://claude.ai/code).
+Minimal task and session manager for agentic coding.
 
-Each todo has a `plan.md` file that gets injected into Claude's context when you start a session, so Claude always knows what you're working on. All commands are accessible by Claude via the CLI — no interactive UI required.
+## Features
+
+- **Session persistence** — tracks Claude session IDs and working directories so you can resume exactly where you left off
+- **Plan-aware sessions** — each todo has a `plan.md` that gets injected into Claude's system prompt, so context carries across sessions automatically
+- **Fuzzy picker** — fzf-based interface to create, select, and act on todos without memorizing commands
+- **Git worktree isolation** — optionally spin up a dedicated worktree and branch per todo, keeping work separated
+- **Subtasks** — break todos into smaller pieces that inherit their parent's branch, worktree, and links
+- **Linear & GitHub linking** — attach tickets, PRs, and branches to todos; open them from the picker
+- **Pre-compact hook** — automatically snapshots conversation context into `plan.md` before Claude compacts, so notes are never lost
+- **Non-interactive CLI** — every action has an ID-addressable command, so Claude (or scripts) can manage todos without a UI
 
 ## Install
 
@@ -81,6 +90,7 @@ All commands accept an optional `[id]` (or ID prefix) to skip the interactive pi
 | `td` | Open the fzf picker (create or select a todo) |
 | `td new "title"` | Create a new todo |
 | `td done [id]` | Mark a todo as done (optionally cleans up worktree/branch) |
+| `td rename [id] "title"` | Rename a todo |
 | `td delete [id]` | Delete a todo and all related data (notes, worktree, branch) |
 | `td list` | List all active todos |
 | `td archive` | Show completed todos |

@@ -65,6 +65,13 @@ _resolve_id() {
         return 0
     fi
 
+    # Try suffix match (for short IDs like "0f1c27")
+    match=$(_read_todos | jq -r --arg suffix "$input" '[.[] | select(.id | endswith($suffix))] | if length == 1 then .[0].id else empty end')
+    if [[ -n "$match" ]]; then
+        echo "$match"
+        return 0
+    fi
+
     echo -e "${RED}Error:${RESET} No unique todo found for '${input}'." >&2
     return 1
 }

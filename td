@@ -49,6 +49,16 @@ else
     TODO_VERSION="dev"
 fi
 
+# --- Global flags (must run before sourcing modules) ------------------------
+
+TODO_QUIET="${TODO_QUIET:-}"
+for _arg in "$@"; do
+    case "$_arg" in
+        --no-color) export NO_COLOR=1 ;;
+        -q|--quiet) TODO_QUIET=1 ;;
+    esac
+done
+
 # --- Source modules (order matters: later modules depend on earlier ones) ----
 
 source "${TODO_LIB}/config.sh"
@@ -65,31 +75,58 @@ if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     return 0
 fi
 
+# Filter out global flags from positional args
+_args=()
+for _arg in "$@"; do
+    case "$_arg" in
+        --no-color|-q|--quiet) ;; # already handled above
+        *) _args+=("$_arg") ;;
+    esac
+done
+set -- "${_args[@]+"${_args[@]}"}"
+
 _ensure_setup
 _check_jq
 _check_gum
 
+_subcmd_usage() {
+    local cmd="$1" usage="$2"
+    echo -e "Usage: ${BOLD}td ${cmd}${RESET} ${usage}" >&2
+    exit 0
+}
+
 case "${1:-}" in
-    new)         shift; cmd_new "${*:-}" ;;
-    done)        shift; cmd_done "${1:-}" ;;
-    split)       shift; cmd_split "${1:-}" "${2:-}" ;;
-    edit)        shift; cmd_edit "${1:-}" ;;
-    link)        shift; cmd_link "${1:-}" "${2:-}" ;;
-    open)        cmd_open ;;
-    get)         shift; cmd_get "${1:-}" ;;
-    note)        shift; cmd_note "${1:-}" "${2:-}" ;;
-    show)        shift; cmd_show "${1:-}" ;;
-    list|ls)     cmd_list ;;
-    archive)     cmd_archive ;;
-    browse)      cmd_browse ;;
-    rename|mv)   shift; cmd_rename "${1:-}" "${2:-}" ;;
-    delete|rm)   shift; cmd_delete "${1:-}" "${2:-}" ;;
+    new)         shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "new" "\"title\""; cmd_new "${*:-}" ;;
+    done)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "done" "[id]"; cmd_done "${1:-}" ;;
+    split)       shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "split" "[parent-id] [\"title\"]"; cmd_split "${1:-}" "${2:-}" ;;
+    edit)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "edit" "[id]"; cmd_edit "${1:-}" ;;
+    link)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "link" "[id] [url|path]"; cmd_link "${1:-}" "${2:-}" ;;
+    open)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "open" ""; cmd_open ;;
+    get)         shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "get" "<id>"; cmd_get "${1:-}" ;;
+    note)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "note" "<id> \"text\""; cmd_note "${1:-}" "${2:-}" ;;
+    show)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "show" "[id]"; cmd_show "${1:-}" ;;
+    list|ls)     shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "list" "[--json]"; cmd_list "${1:-}" ;;
+    archive)     shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "archive" ""; cmd_archive ;;
+    browse)      shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "browse" ""; cmd_browse ;;
+    rename|mv)   shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "rename" "[id] [\"new title\"]"; cmd_rename "${1:-}" "${2:-}" ;;
+    delete|rm)   shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "delete" "[id] [--force]"; cmd_delete "${1:-}" "${2:-}" ;;
     version|--version|-v) echo "td ${TODO_VERSION}" ;;
     help|--help|-h) cmd_help ;;
     "")          cmd_picker ;;
     *)
         echo -e "${RED}Unknown command:${RESET} $1" >&2
-        cmd_help
+        # Suggest closest match
+        _cmds=(new done split edit link open get note show list ls archive browse rename mv delete rm version help)
+        _best="" _best_dist=999
+        for _c in "${_cmds[@]}"; do
+            # Simple: check prefix match or 1-char difference in length
+            if [[ "$_c" == "$1"* || "$1" == "$_c"* ]]; then
+                _best="$_c"; break
+            fi
+        done
+        if [[ -n "$_best" ]]; then
+            echo -e "  Did you mean ${CYAN}td ${_best}${RESET}?" >&2
+        fi
         exit 1
         ;;
 esac
