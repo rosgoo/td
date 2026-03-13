@@ -856,6 +856,20 @@ cmd_open() {
 }
 
 # ---------------------------------------------------------------------------
+# todo try [id] — Apply worktree diff to a try branch on main repo
+# ---------------------------------------------------------------------------
+
+cmd_try() {
+    local selected_id="${1:-}"
+    if [[ -n "$selected_id" ]]; then
+        selected_id=$(_resolve_id "$selected_id") || exit 1
+    else
+        selected_id=$(_pick_todo "Select todo to try" "try ❯ ") || exit 0
+    fi
+    _try_worktree "$selected_id"
+}
+
+# ---------------------------------------------------------------------------
 # Interactive picker (default command) — select todo and take action
 # ---------------------------------------------------------------------------
 
@@ -932,8 +946,7 @@ _select_todo() {
         options+=("Start Claude (current dir)")
         options+=("Start Claude (new worktree)")
     fi
-    [[ -n "$worktree_path" && -n "$branch" ]] && options+=("Promote to main repo")
-    [[ -z "$worktree_path" && -n "$branch" ]] && options+=("Move to worktree")
+    [[ -n "$worktree_path" && -n "$branch" ]] && options+=("Try on main repo")
     options+=("Edit plan")
     options+=("Link")
     [[ -n "$ticket" ]] && options+=("Open Linear")
@@ -957,11 +970,8 @@ _select_todo() {
         "Start Claude (current dir)")
             _start_session "$id" "current-dir"
             ;;
-        "Promote to main repo")
-            _promote_worktree "$id"
-            ;;
-        "Move to worktree")
-            _demote_to_worktree "$id"
+        "Try on main repo")
+            _try_worktree "$id"
             ;;
         "Edit plan")
             $NOTES_EDITOR "$notes_path"
@@ -1344,6 +1354,7 @@ cmd_help() {
     echo ""
     echo -e "  ${CYAN}td new${RESET} ${DIM}[-b] \"title\"${RESET}              Create a new todo (-b for backlog)"
     echo -e "  ${CYAN}td done${RESET} ${DIM}<id>${RESET}                    Mark as done"
+    echo -e "  ${CYAN}td try${RESET} ${DIM}[id]${RESET}                     Apply worktree diff to try branch"
     echo -e "  ${CYAN}td bump${RESET} ${DIM}[id]${RESET}                    Toggle between TODO and backlog"
     echo -e "  ${CYAN}td rename${RESET} ${DIM}<id> \"title\"${RESET}          Rename a todo"
     echo -e "  ${CYAN}td delete${RESET} ${DIM}<id> [--force]${RESET}       Delete todo and all data"

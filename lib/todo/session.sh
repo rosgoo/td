@@ -97,12 +97,13 @@ _init_worktree_for_todo() {
     echo "$worktree_path"
 }
 
-# --- Promote / demote -------------------------------------------------------
+# --- Try (apply worktree diff to main repo) ---------------------------------
 
-_promote_worktree() {
-    # Moves a branch from a worktree into the main repo checkout.
-    # Removes the worktree, checks out the branch in REPO_ROOT, and migrates
-    # any Claude session files so --resume still works.
+_try_worktree() {
+    # Takes all diffs from a worktree branch vs the main branch and applies
+    # them as a single commit on a new "try-<slug>" branch off main in the
+    # main repo checkout. This lets you test worktree changes without
+    # promoting or deleting the worktree.
     local id="$1"
     _require_repo
 
@@ -113,128 +114,73 @@ _promote_worktree() {
     branch=$(echo "$todo" | jq -r '.branch // empty')
     title=$(echo "$todo" | jq -r '.title')
 
-    if [[ -z "$worktree_path" || -z "$branch" ]]; then
-        echo -e "${RED}Error:${RESET} No worktree or branch to promote." >&2
+    if [[ -z "$worktree_path" ]]; then
+        echo -e "${RED}Error:${RESET} This todo has no worktree. 'try' only works with worktree sessions." >&2
         return 1
     fi
 
-    echo -e "${BOLD}Promote:${RESET} ${branch} → main repo"
-    echo -e "${DIM}This will remove the worktree at ${worktree_path} and checkout the branch in ${REPO_ROOT}${RESET}"
-    _gum_confirm "Continue?" || return 0
-
-    # Remove the worktree (frees the branch for checkout in main repo)
-    if [[ -d "$worktree_path" ]]; then
-        git -C "$REPO_ROOT" worktree remove "$worktree_path" --force 2>&1 || true
-        echo -e "${DIM}Removed worktree${RESET}"
-    fi
-
-    # Checkout the branch in the main repo
-    local checkout_result
-    checkout_result=$(git -C "$REPO_ROOT" checkout "$branch" 2>&1)
-    if [[ $? -eq 0 ]]; then
-        echo -e "${GREEN}${SYM_CHECK}${RESET} Checked out ${BOLD}${branch}${RESET} in ${REPO_ROOT}"
-    else
-        echo -e "${RED}Error:${RESET} Could not checkout branch: ${checkout_result}" >&2
+    if ! _validate_worktree "$worktree_path"; then
+        echo -e "${RED}Error:${RESET} Worktree at ${worktree_path} is missing or invalid." >&2
         return 1
     fi
 
-    # Migrate Claude session files from worktree project dir to main repo project dir.
-    # Claude stores session data in ~/.claude/projects/<path-with-dashes>/, so
-    # we need to move files from the worktree-derived path to the repo-derived path.
-    local session_id
-    session_id=$(echo "$todo" | jq -r '.session_id // empty')
-    if [[ -n "$session_id" ]]; then
-        local claude_projects="${HOME}/.claude/projects"
-        local src_dir="${claude_projects}/$(echo "$worktree_path" | sed 's|[/.]|-|g')"
-        local dst_dir="${claude_projects}/$(echo "$REPO_ROOT" | sed 's|[/.]|-|g')"
-
-        if [[ -d "$src_dir" ]]; then
-            mkdir -p "$dst_dir"
-            [[ -f "${src_dir}/${session_id}.jsonl" ]] && mv "${src_dir}/${session_id}.jsonl" "${dst_dir}/"
-            [[ -d "${src_dir}/${session_id}" ]] && mv "${src_dir}/${session_id}" "${dst_dir}/"
-            echo -e "${DIM}Migrated Claude session to main repo${RESET}"
-        fi
-    fi
-
-    # Clear worktree_path, update session_cwd to REPO_ROOT
-    local updated
-    updated=$(_read_todos | jq --arg id "$id" --arg cwd "$REPO_ROOT" \
-        'map(if .id == $id then .worktree_path = "" | .session_cwd = $cwd else . end)')
-    _write_todos "$updated"
-
-    echo -e "${DIM}Updated todo to use ${REPO_ROOT}${RESET}"
-}
-
-_demote_to_worktree() {
-    # Moves a branch from the main repo checkout into its own worktree.
-    # The inverse of _promote_worktree.
-    local id="$1"
-    _require_repo
-
-    local todo
-    todo=$(_get_todo "$id")
-    local branch title session_id
-    branch=$(echo "$todo" | jq -r '.branch // empty')
-    title=$(echo "$todo" | jq -r '.title')
-    session_id=$(echo "$todo" | jq -r '.session_id // empty')
-
-    if [[ -z "$branch" ]]; then
-        echo -e "${RED}Error:${RESET} No branch to demote." >&2
-        return 1
-    fi
-
-    local slug worktree_path
-    slug=$(_slugify "$title")
-    worktree_path="$(_worktree_dir)/${slug}"
-
-    echo -e "${BOLD}Demote:${RESET} ${branch} → worktree"
-    echo -e "${DIM}This will create a worktree at ${worktree_path} and switch main repo back to master${RESET}"
-    _gum_confirm "Continue?" || return 0
-
-    # Switch main repo to master/main first to free the branch
-    local current_branch
-    current_branch=$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null || echo "")
-    if [[ "$current_branch" != "$branch" ]]; then
-        echo -e "${YELLOW}Warning:${RESET} Main repo is on '${current_branch}', not '${branch}'."
-        echo -e "${DIM}The branch will be moved to a worktree regardless.${RESET}"
-    fi
-
+    # Determine base branch
     local base_branch="master"
     if ! git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/master" 2>/dev/null; then
         base_branch="main"
     fi
 
-    if [[ "$current_branch" == "$branch" ]]; then
-        git -C "$REPO_ROOT" checkout "$base_branch" 2>&1 || true
-        echo -e "${DIM}Switched main repo to ${base_branch}${RESET}"
+    # Check that there are actually changes
+    local diff
+    diff=$(git -C "$worktree_path" diff "${base_branch}...HEAD" 2>/dev/null)
+    if [[ -z "$diff" ]]; then
+        echo -e "${YELLOW}No changes${RESET} between ${base_branch} and ${branch}."
+        return 0
     fi
 
-    # Create worktree with the branch
-    mkdir -p "$(dirname "$worktree_path")"
-    git -C "$REPO_ROOT" worktree add "$worktree_path" "$branch" 2>&1
-    echo -e "${GREEN}${SYM_CHECK}${RESET} Created worktree at ${DIM}${worktree_path}${RESET}"
+    local slug try_branch
+    slug=$(_slugify "$title")
+    try_branch="try-${slug}"
 
-    # Migrate Claude session files to the worktree project dir
-    if [[ -n "$session_id" ]]; then
-        local claude_projects="${HOME}/.claude/projects"
-        local src_dir="${claude_projects}/$(echo "$REPO_ROOT" | sed 's|[/.]|-|g')"
-        local dst_dir="${claude_projects}/$(echo "$worktree_path" | sed 's|[/.]|-|g')"
+    # Check for uncommitted changes in main repo
+    if ! git -C "$REPO_ROOT" diff --quiet 2>/dev/null || ! git -C "$REPO_ROOT" diff --cached --quiet 2>/dev/null; then
+        echo -e "${RED}Error:${RESET} Main repo has uncommitted changes. Commit or stash them first." >&2
+        return 1
+    fi
 
-        if [[ -d "$src_dir" ]]; then
-            mkdir -p "$dst_dir"
-            [[ -f "${src_dir}/${session_id}.jsonl" ]] && mv "${src_dir}/${session_id}.jsonl" "${dst_dir}/"
-            [[ -d "${src_dir}/${session_id}" ]] && mv "${src_dir}/${session_id}" "${dst_dir}/"
-            echo -e "${DIM}Migrated Claude session to worktree${RESET}"
+    echo -e "${BOLD}Try:${RESET} ${title}"
+    echo -e "${DIM}Applying diff from ${branch} onto ${base_branch} as ${try_branch}${RESET}"
+
+    # Delete existing try branch if it exists
+    if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/${try_branch}" 2>/dev/null; then
+        if ! _gum_confirm "Branch '${try_branch}' already exists. Replace it?"; then
+            return 0
         fi
+        # If main repo is on the try branch, switch off first
+        local current_branch
+        current_branch=$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null || echo "")
+        if [[ "$current_branch" == "$try_branch" ]]; then
+            git -C "$REPO_ROOT" checkout "$base_branch" 2>/dev/null
+        fi
+        git -C "$REPO_ROOT" branch -D "$try_branch" 2>/dev/null
     fi
 
-    # Update todo record
-    local updated
-    updated=$(_read_todos | jq --arg id "$id" --arg wt "$worktree_path" --arg cwd "$worktree_path" \
-        'map(if .id == $id then .worktree_path = $wt | .session_cwd = $cwd else . end)')
-    _write_todos "$updated"
+    # Create try branch from base
+    git -C "$REPO_ROOT" checkout -b "$try_branch" "$base_branch" 2>/dev/null
 
-    echo -e "${DIM}Updated todo to use ${worktree_path}${RESET}"
+    # Apply the diff
+    if ! echo "$diff" | git -C "$REPO_ROOT" apply --index 2>/dev/null; then
+        echo -e "${RED}Error:${RESET} Failed to apply diff cleanly. Resetting." >&2
+        git -C "$REPO_ROOT" checkout "$base_branch" 2>/dev/null
+        git -C "$REPO_ROOT" branch -D "$try_branch" 2>/dev/null
+        return 1
+    fi
+
+    # Commit
+    git -C "$REPO_ROOT" commit -m "try: ${title}" 2>/dev/null
+
+    echo -e "${GREEN}${SYM_CHECK}${RESET} Created ${BOLD}${try_branch}${RESET} with changes from ${branch}"
+    echo -e "${DIM}Main repo is now on ${try_branch}. Worktree is unchanged.${RESET}"
 }
 
 # --- Claude session launching -----------------------------------------------
