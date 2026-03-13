@@ -948,7 +948,7 @@ _select_todo() {
     fi
     [[ -n "$worktree_path" && -n "$branch" ]] && options+=("Try on main repo")
     options+=("Edit plan")
-    options+=("Link")
+    options+=("Add note")
     [[ -n "$ticket" ]] && options+=("Open Linear")
     [[ -n "$github_pr" || -n "$branch" ]] && options+=("Open GitHub")
     if [[ "$group" == "backlog" ]]; then
@@ -956,10 +956,10 @@ _select_todo() {
     else
         options+=("Move to backlog")
     fi
-    options+=("Add subtask" "Mark as done" "Back")
+    options+=("Add subtask" "Rename" "Mark as done" "Delete" "Link" "Back")
 
     local choice
-    choice=$(_gum_choose "What next?" "${options[@]}") || return 0
+    choice=$(_action_menu "What next?" "${options[@]}") || return 0
     case "$choice" in
         "Resume Claude session"|"Start Claude session")
             _start_session "$id"
@@ -1009,8 +1009,21 @@ _select_todo() {
         "Add subtask")
             cmd_split "$id"
             ;;
+        "Add note")
+            local note_text
+            note_text=$(_gum_input "Note to append to plan...") || return 0
+            if [[ -n "$note_text" ]]; then
+                cmd_note "$id" "$note_text"
+            fi
+            ;;
+        "Rename")
+            cmd_rename "$id"
+            ;;
         "Mark as done")
             _archive_todo "$id"
+            ;;
+        "Delete")
+            cmd_delete "$id"
             ;;
         *)
             return 0

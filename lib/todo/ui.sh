@@ -31,6 +31,38 @@ _gum_input() {
     gum input --placeholder "$1" --cursor.foreground="4" --prompt "› " --prompt.foreground="4"
 }
 
+_action_menu() {
+    # Numbered fzf menu. Type a number or fuzzy-search to select.
+    # Auto-accepts when only one match remains.
+    # Usage: _action_menu "header" "option1" "option2" ...
+    # Returns the option text (without the number prefix).
+    local header="$1"; shift
+    local i=1
+    local input=""
+    for opt in "$@"; do
+        [[ -n "$input" ]] && input="${input}\n"
+        input="${input}${i}  ${opt}"
+        ((i++))
+    done
+
+    local result
+    result=$(echo -e "$input" | fzf \
+        --header "$header" \
+        --layout=reverse \
+        --height=~20 \
+        --no-info \
+        --no-scrollbar \
+        --border \
+        --ansi \
+        --no-multi \
+        --prompt="› " \
+        --bind 'one:accept' \
+    ) || return 1
+
+    # Strip the number prefix
+    echo "$result" | sed 's/^[0-9]*  //'
+}
+
 # --- fzf picker -------------------------------------------------------------
 
 _pick_todo() {
