@@ -1,0 +1,41 @@
+name: Update Homebrew Formula
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-formula:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get release info
+        id: release
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          SHA=$(curl -sL "https://github.com/rosgoo/td/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz" | shasum -a 256 | awk '{print $1}')
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Update formula in homebrew-tap
+        env:
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          SHA="${{ steps.release.outputs.sha256 }}"
+          TAG="${GITHUB_REF_NAME}"
+
+          # Fetch current formula
+          FORMULA=$(gh api repos/rosgoo/homebrew-tap/contents/Formula/td.rb --jq '.content' | base64 -d)
+          FILE_SHA=$(gh api repos/rosgoo/homebrew-tap/contents/Formula/td.rb --jq '.sha')
+
+          # Update version, url, and sha256
+          FORMULA=$(echo "$FORMULA" | sed "s|url \".*\"|url \"https://github.com/rosgoo/td/archive/refs/tags/${TAG}.tar.gz\"|")
+          FORMULA=$(echo "$FORMULA" | sed "s|sha256 \".*\"|sha256 \"${SHA}\"|")
+
+          # Push updated formula
+          CONTENT=$(echo "$FORMULA" | base64 -w 0)
+          gh api repos/rosgoo/homebrew-tap/contents/Formula/td.rb \
+            -X PUT \
+            -f message="Update td to ${VERSION}" \
+            -f content="$CONTENT" \
+            -f sha="$FILE_SHA"

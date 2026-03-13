@@ -1326,6 +1326,89 @@ cmd_find() {
 # td help — Show usage
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# td update — Update td to the latest version
+# ---------------------------------------------------------------------------
+
+cmd_update() {
+    local repo="rosgoo/td"
+    local bin_dir="${HOME}/.local/bin"
+    local lib_dir="${HOME}/.local/lib/todo"
+
+    # Check if running from a git clone (dev mode)
+    local self
+    self="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}")"
+    local self_dir
+    self_dir="$(dirname "$(dirname "$(dirname "$self")")")"
+    if [[ -d "${self_dir}/.git" ]]; then
+        echo -e "${DIM}Running from git clone at ${self_dir}${RESET}"
+        echo -e "${DIM}Use 'git pull && ./install.sh' to update.${RESET}"
+        return 0
+    fi
+
+    echo -e "${DIM}Checking for updates...${RESET}"
+
+    local latest
+    latest=$(curl -fsSL "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null \
+        | grep '"tag_name"' | sed 's/.*"tag_name": *"//;s/".*//')
+
+    if [[ -z "$latest" ]]; then
+        echo -e "${RED}✗${RESET} Could not fetch latest version from GitHub" >&2
+        return 1
+    fi
+
+    local latest_ver="${latest#v}"
+    local current_ver="${TODO_VERSION}"
+
+    if [[ "$latest_ver" == "$current_ver" ]]; then
+        echo -e "${GREEN}✓${RESET} Already up to date (${current_ver})"
+        return 0
+    fi
+
+    echo -e "  ${DIM}Current: ${current_ver}${RESET}"
+    echo -e "  ${BOLD}Latest:  ${latest_ver}${RESET}"
+    echo ""
+
+    # Download and extract
+    local tarball_url="https://github.com/${repo}/archive/refs/tags/${latest}.tar.gz"
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    trap 'rm -rf "$tmp_dir"' RETURN
+
+    echo -e "${DIM}Downloading ${latest}...${RESET}"
+    if ! curl -fsSL "$tarball_url" | tar xz -C "$tmp_dir"; then
+        echo -e "${RED}✗${RESET} Download failed" >&2
+        return 1
+    fi
+
+    local src_dir="${tmp_dir}/td-${latest_ver}"
+    if [[ ! -d "$src_dir" ]]; then
+        src_dir=$(find "$tmp_dir" -maxdepth 1 -type d ! -name "$(basename "$tmp_dir")" | head -1)
+    fi
+
+    # Install files
+    mkdir -p "$lib_dir" "$bin_dir"
+    cp "${src_dir}"/lib/todo/*.sh "$lib_dir/"
+    cp "${src_dir}/td" "${bin_dir}/td" && chmod +x "${bin_dir}/td"
+    cp "${src_dir}/VERSION" "${HOME}/.local/VERSION"
+
+    if [[ -f "${src_dir}/hooks/pre-compact" ]]; then
+        cp "${src_dir}/hooks/pre-compact" "${bin_dir}/td-pre-compact"
+        chmod +x "${bin_dir}/td-pre-compact"
+    fi
+
+    if [[ -f "${src_dir}/commands/td.md" ]]; then
+        mkdir -p "${HOME}/.claude/commands"
+        cp "${src_dir}/commands/td.md" "${HOME}/.claude/commands/td.md"
+    fi
+
+    echo -e "${GREEN}✓${RESET} Updated td ${current_ver} → ${latest_ver}"
+}
+
+# ---------------------------------------------------------------------------
+# td help
+# ---------------------------------------------------------------------------
+
 cmd_help() {
     echo ""
     echo -e "${CYAN}  ▄▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄   ▄▄▄▄▄${RESET}"
@@ -1364,6 +1447,7 @@ cmd_help() {
     echo -e "  ${CYAN}td list${RESET}                         List active todos"
     echo -e "  ${CYAN}td archive${RESET}                      Show completed todos"
     echo -e "  ${CYAN}td version${RESET}                      Print version"
+    echo -e "  ${CYAN}td update${RESET}                       Update to latest version"
     echo ""
     echo -e "  ${DIM}$(printf '%.0s─' {1..54})${RESET}"
     echo ""

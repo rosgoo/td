@@ -9,6 +9,13 @@ DIM='\033[2m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
+SKIP_HOOKS=false
+for arg in "$@"; do
+    case "$arg" in
+        --no-hooks) SKIP_HOOKS=true ;;
+    esac
+done
+
 BIN_DIR="${HOME}/.local/bin"
 LIB_DIR="${HOME}/.local/lib/todo"
 CONFIG_DIR="${HOME}/.config/claude-todo"
@@ -94,6 +101,29 @@ echo "Hooks:"
 _link_hook pre-compact
 echo ""
 
+# Claude Code custom commands (skills)
+CLAUDE_COMMANDS_DIR="${HOME}/.claude/commands"
+_link_command() {
+    local name="$1"
+    local src="${SCRIPT_DIR}/commands/${name}.md"
+    local dst="${CLAUDE_COMMANDS_DIR}/${name}.md"
+    if [[ ! -f "$src" ]]; then
+        echo -e "  ${DIM}Skipping command ${name} (not found)${RESET}"
+        return
+    fi
+    if [[ -L "$dst" && "$(readlink "$dst")" == "$src" ]]; then
+        echo -e "  ${GREEN}✓${RESET} ${dst} already linked"
+    else
+        mkdir -p "$CLAUDE_COMMANDS_DIR"
+        ln -sf "$src" "$dst"
+        echo -e "  ${GREEN}✓${RESET} Linked ${dst}"
+    fi
+}
+
+echo "Claude Code commands:"
+_link_command td
+echo ""
+
 # Settings template
 if [[ ! -f "${CONFIG_DIR}/settings.json" ]]; then
     mkdir -p "$CONFIG_DIR"
@@ -112,20 +142,55 @@ if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
     echo ""
 fi
 
-# Remind about hooks config
-echo ""
-echo -e "${BOLD}Configure Claude Code hooks${RESET} in ~/.claude/settings.json:"
-echo ""
-echo '  "hooks": {'
-echo '    "PreCompact": [{'
-echo '      "hooks": [{'
-echo '        "type": "command",'
-echo '        "command": "td-pre-compact",'
-echo '        "timeout": 10'
-echo '      }]'
-echo '    }]'
-echo '  }'
-echo ""
+# Configure Claude Code hooks in ~/.claude/settings.json
+if [[ "$SKIP_HOOKS" == true ]]; then
+    echo -e "${DIM}Skipping Claude Code hook configuration (--no-hooks)${RESET}"
+    echo ""
+else
+    CLAUDE_SETTINGS="${HOME}/.claude/settings.json"
+    TD_HOOK='{"type":"command","command":"td-pre-compact","timeout":10}'
+
+    _has_td_hook() {
+        jq -e '.hooks.PreCompact // [] | .. | select(.command? == "td-pre-compact")' \
+            "$CLAUDE_SETTINGS" &>/dev/null
+    }
+
+    echo "Claude Code hooks:"
+    if [[ -f "$CLAUDE_SETTINGS" ]]; then
+        if _has_td_hook; then
+            echo -e "  ${GREEN}✓${RESET} PreCompact hook already configured"
+        else
+            tmp=$(mktemp)
+            jq --argjson hook "$TD_HOOK" '
+                .hooks //= {} |
+                .hooks.PreCompact //= [] |
+                .hooks.PreCompact += [{"hooks": [$hook]}]
+            ' "$CLAUDE_SETTINGS" > "$tmp" && mv "$tmp" "$CLAUDE_SETTINGS"
+            echo -e "  ${GREEN}✓${RESET} Added PreCompact hook to ${CLAUDE_SETTINGS}"
+        fi
+    else
+        mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
+        cat > "$CLAUDE_SETTINGS" <<-ENDJSON
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "td-pre-compact",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+ENDJSON
+        echo -e "  ${GREEN}✓${RESET} Created ${CLAUDE_SETTINGS} with PreCompact hook"
+    fi
+    echo ""
+fi
 
 # Show help (includes logo)
 "${SCRIPT_DIR}/td" help

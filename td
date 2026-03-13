@@ -113,13 +113,14 @@ case "${1:-}" in
     rename|mv)   shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "rename" "[id] [\"new title\"]"; cmd_rename "${1:-}" "${2:-}" ;;
     delete|rm)   shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "delete" "[id] [--force]"; cmd_delete "${1:-}" "${2:-}" ;;
     find)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "find" "[query]"; cmd_find "${*:-}" ;;
+    update)      shift; cmd_update ;;
     version|--version|-v) echo "td ${TODO_VERSION}" ;;
     help|--help|-h) cmd_help ;;
     "")          cmd_picker ;;
     *)
         echo -e "${RED}Unknown command:${RESET} $1" >&2
         # Suggest closest match
-        _cmds=(new done try bump split edit link open get note show list ls archive browse rename mv delete rm find version help)
+        _cmds=(new done try bump split edit link open get note show list ls archive browse rename mv delete rm find update version help)
         _best="" _best_dist=999
         for _c in "${_cmds[@]}"; do
             # Simple: check prefix match or 1-char difference in length

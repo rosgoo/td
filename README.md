@@ -20,13 +20,31 @@ Minimal task and session manager for agentic coding.
 
 ## Install
 
-### Homebrew
+```bash
+curl -fsSL https://raw.githubusercontent.com/rosgoo/td/main/install-remote.sh | bash
+```
+
+This downloads the latest release, installs dependencies (`jq`, `fzf`, `gum`) via Homebrew, and sets up the Claude Code hook and `/td` slash command. Make sure `~/.local/bin` is in your `PATH`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+To update:
+
+```bash
+td update
+```
+
+### Other install methods
+
+**Homebrew:**
 
 ```bash
 brew install rosgoo/tap/td
 ```
 
-### Manual
+**From source (for development):**
 
 ```bash
 git clone https://github.com/rosgoo/td.git
@@ -34,15 +52,13 @@ cd td
 ./install.sh
 ```
 
-This installs dependencies (`jq`, `fzf`, `gum`) via Homebrew, copies lib files to `~/.local/lib/todo/`, and symlinks `td` to `~/.local/bin`. Make sure `~/.local/bin` is in your `PATH`:
+To skip automatic hook injection, pass `--no-hooks`:
 
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
+curl -fsSL https://raw.githubusercontent.com/rosgoo/td/main/install-remote.sh | bash -s -- --no-hooks
 ```
 
-### Post-install: Claude Code hooks
-
-Add the pre-compact hook to `~/.claude/settings.json`:
+To configure the hook manually, add this to `~/.claude/settings.json`:
 
 ```json
 {
@@ -133,6 +149,7 @@ Subtasks inherit their parent's branch, worktree, and Linear ticket. Metadata th
 | Command | Description |
 |---------|-------------|
 | `td browse` | Open notes directory in your editor |
+| `td update` | Update to latest version |
 | `td version` | Print version |
 | `td help` | Show help |
 
