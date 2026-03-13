@@ -947,16 +947,16 @@ _select_todo() {
         options+=("Start Claude (new worktree)")
     fi
     [[ -n "$worktree_path" && -n "$branch" ]] && options+=("Try on main repo")
-    options+=("Edit plan")
-    options+=("Add note")
-    [[ -n "$ticket" ]] && options+=("Open Linear")
-    [[ -n "$github_pr" || -n "$branch" ]] && options+=("Open GitHub")
+    options+=("Mark as done")
     if [[ "$group" == "backlog" ]]; then
         options+=("Move to TODO")
     else
         options+=("Move to backlog")
     fi
-    options+=("Add subtask" "Rename" "Mark as done" "Delete" "Link" "Back")
+    options+=("Add subtask")
+    options+=("Edit plan")
+    [[ -n "$ticket" || -n "$github_pr" || -n "$branch" ]] && options+=("Open")
+    options+=("Link" "Back")
 
     local choice
     choice=$(_action_menu "What next?" "${options[@]}") || return 0
@@ -973,32 +973,8 @@ _select_todo() {
         "Try on main repo")
             _try_worktree "$id"
             ;;
-        "Edit plan")
-            $NOTES_EDITOR "$notes_path"
-            ;;
-        "Link")
-            cmd_link "$id"
-            ;;
-        "Open Linear")
-            local ticket_url
-            ticket_url=$(_linear_ticket_url "$ticket")
-            echo -e "${DIM}Opening ${ticket_url}${RESET}"
-            _open_url "$ticket_url"
-            ;;
-        "Open GitHub")
-            if [[ -n "$github_pr" ]]; then
-                echo -e "${DIM}Opening ${github_pr}${RESET}"
-                _open_url "$github_pr"
-            else
-                local branch_url
-                branch_url=$(_github_branch_url "$branch")
-                if [[ -n "$branch_url" ]]; then
-                    echo -e "${DIM}Opening ${branch_url}${RESET}"
-                    _open_url "$branch_url"
-                else
-                    echo -e "${YELLOW}Could not determine GitHub URL.${RESET}"
-                fi
-            fi
+        "Mark as done")
+            _archive_todo "$id"
             ;;
         "Move to TODO")
             _bump_group "$id" "todo"
@@ -1009,21 +985,30 @@ _select_todo() {
         "Add subtask")
             cmd_split "$id"
             ;;
-        "Add note")
-            local note_text
-            note_text=$(_gum_input "Note to append to plan...") || return 0
-            if [[ -n "$note_text" ]]; then
-                cmd_note "$id" "$note_text"
+        "Edit plan")
+            $NOTES_EDITOR "$notes_path"
+            ;;
+        "Open")
+            local open_urls=()
+            if [[ -n "$ticket" ]]; then
+                local ticket_url
+                ticket_url=$(_linear_ticket_url "$ticket")
+                open_urls+=("$ticket_url")
             fi
+            if [[ -n "$github_pr" ]]; then
+                open_urls+=("$github_pr")
+            elif [[ -n "$branch" ]]; then
+                local branch_url
+                branch_url=$(_github_branch_url "$branch")
+                [[ -n "$branch_url" ]] && open_urls+=("$branch_url")
+            fi
+            for url in "${open_urls[@]}"; do
+                echo -e "${DIM}Opening ${url}${RESET}"
+                _open_url "$url"
+            done
             ;;
-        "Rename")
-            cmd_rename "$id"
-            ;;
-        "Mark as done")
-            _archive_todo "$id"
-            ;;
-        "Delete")
-            cmd_delete "$id"
+        "Link")
+            cmd_link "$id"
             ;;
         *)
             return 0
