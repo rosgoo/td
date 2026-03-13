@@ -354,6 +354,11 @@ _start_session() {
             if _gum_confirm "Session was started in ${session_cwd}. Switch directory?"; then
                 cd "$session_cwd"
             else
+                echo -e "${YELLOW}Warning:${RESET} Cannot resume session from a different directory."
+                if _gum_confirm "Start a new session here instead?"; then
+                    _launch_claude "$id" ""
+                    return
+                fi
                 return 0
             fi
         fi
@@ -426,9 +431,10 @@ _start_session() {
     real_wt="$(realpath "$worktree_path" 2>/dev/null || echo "$worktree_path")"
     real_cwd="$(realpath "$current_cwd" 2>/dev/null || echo "$current_cwd")"
 
+    local switch_dir=true
     if [[ "$real_wt" != "$real_cwd" ]]; then
         if ! _gum_confirm "Session is in ${worktree_path}. Switch directory?"; then
-            return 0
+            switch_dir=false
         fi
     fi
 
@@ -448,6 +454,8 @@ _start_session() {
         fi
     fi
 
-    cd "$worktree_path"
+    if [[ "$switch_dir" == true ]]; then
+        cd "$worktree_path"
+    fi
     _launch_claude "$id" "$session_id"
 }

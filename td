@@ -96,8 +96,9 @@ _subcmd_usage() {
 }
 
 case "${1:-}" in
-    new)         shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "new" "\"title\""; cmd_new "${*:-}" ;;
+    new)         shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "new" "[-b|--backlog] \"title\""; cmd_new "$@" ;;
     done)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "done" "[id]"; cmd_done "${1:-}" ;;
+    bump)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "bump" "[id]"; cmd_bump "${1:-}" ;;
     split)       shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "split" "[parent-id] [\"title\"]"; cmd_split "${1:-}" "${2:-}" ;;
     edit)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "edit" "[id]"; cmd_edit "${1:-}" ;;
     link)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "link" "[id] [url|path]"; cmd_link "${1:-}" "${2:-}" ;;
@@ -110,13 +111,14 @@ case "${1:-}" in
     browse)      shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "browse" ""; cmd_browse ;;
     rename|mv)   shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "rename" "[id] [\"new title\"]"; cmd_rename "${1:-}" "${2:-}" ;;
     delete|rm)   shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "delete" "[id] [--force]"; cmd_delete "${1:-}" "${2:-}" ;;
+    find)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "find" "[query]"; cmd_find "${*:-}" ;;
     version|--version|-v) echo "td ${TODO_VERSION}" ;;
     help|--help|-h) cmd_help ;;
     "")          cmd_picker ;;
     *)
         echo -e "${RED}Unknown command:${RESET} $1" >&2
         # Suggest closest match
-        _cmds=(new done split edit link open get note show list ls archive browse rename mv delete rm version help)
+        _cmds=(new done bump split edit link open get note show list ls archive browse rename mv delete rm find version help)
         _best="" _best_dist=999
         for _c in "${_cmds[@]}"; do
             # Simple: check prefix match or 1-char difference in length

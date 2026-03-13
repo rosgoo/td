@@ -82,13 +82,30 @@ _format_fzf_lines() {
     # Sorting: active parents first (most recently opened), with their subtasks
     # nested below. Done todos follow. Subtasks de-duplicate branch/dir when
     # they match their parent.
+    #
+    # Args:
+    #   $1 — show_done: "true" (default) or "false"
+    #   $2 — group_filter: "todo", "backlog", or "" (all groups, default)
 
     local show_done="${1:-true}"
+    local group_filter="${2:-}"
     local all_todos
     if [[ "$show_done" == "true" ]]; then
-        all_todos=$(_read_todos | jq -r 'sort_by(.created_at) | reverse')
+        all_todos=$(_read_todos | jq -r --arg gf "$group_filter" '
+            [.[] | select(
+                if $gf == "" then true
+                elif $gf == "todo" then (.group // "todo") == "todo"
+                elif $gf == "backlog" then (.group // "todo") == "backlog"
+                else true end
+            )] | sort_by(.created_at) | reverse')
     else
-        all_todos=$(_read_todos | jq -r '[.[] | select(.status != "done")] | sort_by(.created_at) | reverse')
+        all_todos=$(_read_todos | jq -r --arg gf "$group_filter" '
+            [.[] | select(.status != "done") | select(
+                if $gf == "" then true
+                elif $gf == "todo" then (.group // "todo") == "todo"
+                elif $gf == "backlog" then (.group // "todo") == "backlog"
+                else true end
+            )] | sort_by(.created_at) | reverse')
     fi
     local count
     count=$(echo "$all_todos" | jq 'length')
@@ -108,7 +125,7 @@ _format_fzf_lines() {
     #   2. For each todo, formats fixed-width columns with ANSI escape codes.
     #   3. Subtasks get "└─" indent scaled by depth, and de-duplicate branch/dir
     #      when they match their root ancestor.
-    echo "$all_todos" | jq -r --arg now "$now_epoch" --arg today "$today_epoch" --arg yesterday "$yesterday_epoch" '
+    echo "$all_todos" | jq -r --arg now "$now_epoch" --arg today "$today_epoch" --arg yesterday "$yesterday_epoch" --arg gf "$group_filter" '
         # Sort key: last_opened_at if set, else created_at
         def sort_key: (.last_opened_at // .created_at);
 
@@ -152,6 +169,7 @@ _format_fzf_lines() {
         (.id) as $id |
         (.title) as $title |
         (.status // "active") as $status |
+        (.group // "todo") as $group |
         (.branch // "") as $branch |
         (.worktree_path // "") as $wt |
         (.linear_ticket // "") as $ticket |
@@ -203,7 +221,11 @@ _format_fzf_lines() {
         if $status == "done" then
             "\($id)\t\($wt)\t\($branch)\t\u001b[2;9m\($age_col)  \u001b[0;32m✓\u001b[2;9m \($indent)\($title_col)  \($dir_col)  \($branch_col)\u001b[0m"
         else
-            (if $session != "" then "\u001b[0;32m◉\u001b[0m " else "  " end) as $icon |
+            (if $group == "backlog" then
+                (if $session != "" then "\u001b[2m○\u001b[0m " else "  " end)
+            else
+                (if $session != "" then "\u001b[0;32m◉\u001b[0m " else "  " end)
+            end) as $icon |
             (if $ticket != "" then
                 (if $tw > 0 then
                     ($tw - ($ticket | length) - 1) as $ttw |

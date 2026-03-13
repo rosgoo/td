@@ -42,6 +42,30 @@ _slugify() {
     echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//' | cut -c1-40
 }
 
+_notes_folder_name() {
+    # Returns a human-readable folder name for use in NOTES_DIR.
+    # Uses just the slug, with a -2, -3 suffix if there's a collision.
+    local id="$1" title="$2"
+    local slug
+    slug=$(_slugify "$title")
+    [[ -z "$slug" ]] && slug="untitled"
+
+    local candidate="$slug"
+    local n=2
+    while [[ -d "${NOTES_DIR}/${candidate}" ]]; do
+        # Check if this folder belongs to the same todo (already correct)
+        local existing_plan="${NOTES_DIR}/${candidate}/plan.md"
+        if [[ -f "$existing_plan" ]]; then
+            local existing_id
+            existing_id=$(_read_todos | jq -r --arg np "${existing_plan}" '.[] | select(.notes_path == $np) | .id')
+            [[ "$existing_id" == "$id" ]] && break
+        fi
+        candidate="${slug}-${n}"
+        ((n++))
+    done
+    echo "$candidate"
+}
+
 _resolve_id() {
     # Resolve a todo by exact ID or unique prefix. Returns the full ID on stdout.
     # Exits 1 if no unique match is found.
@@ -109,7 +133,7 @@ _ensure_notes() {
     # Creates plan.md for a todo if it doesn't exist yet. Returns the file path.
     local id="$1"
     local title="$2"
-    local notes_path="${NOTES_DIR}/${id}"
+    local notes_path="${NOTES_DIR}/$(_notes_folder_name "$id" "$title")"
 
     if [[ ! -f "${notes_path}/plan.md" ]]; then
         mkdir -p "$notes_path"

@@ -9,7 +9,17 @@
 # ---------------------------------------------------------------------------
 
 cmd_new() {
-    local title="${1:-}"
+    local group="todo"
+    local title=""
+
+    # Parse flags
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -b|--backlog) group="backlog"; shift ;;
+            *) title="$1"; shift ;;
+        esac
+    done
+
     if [[ -z "$title" ]]; then
         title=$(_gum_input "Todo title...")
         if [[ -z "$title" ]]; then
@@ -19,7 +29,7 @@ cmd_new() {
 
     local id notes_path
     id=$(_generate_id)
-    notes_path="${NOTES_DIR}/${id}"
+    notes_path="${NOTES_DIR}/$(_notes_folder_name "$id" "$title")"
 
     # Create plan.md
     mkdir -p "$notes_path"
@@ -41,6 +51,7 @@ EOF
         --arg created_at "$now" \
         --arg notes_path "${notes_path}/plan.md" \
         --arg status "active" \
+        --arg group "$group" \
         '. + [{
             id: $id,
             title: $title,
@@ -48,15 +59,18 @@ EOF
             branch: "",
             worktree_path: "",
             notes_path: $notes_path,
-            status: $status
+            status: $status,
+            group: $group
         }]')
     _write_todos "$updated"
 
     local short_id="${id##*-}"
+    local group_label=""
+    [[ "$group" == "backlog" ]] && group_label=" ${DIM}(backlog)${RESET}"
     if [[ -n "${TODO_QUIET:-}" ]]; then
         echo "$id"
     else
-        echo -e "${GREEN}${SYM_CHECK}${RESET} Created: ${BOLD}${title}${RESET}  ${DIM}${short_id}${RESET}"
+        echo -e "${GREEN}${SYM_CHECK}${RESET} Created: ${BOLD}${title}${RESET}${group_label}  ${DIM}${short_id}${RESET}"
         echo -e "  ${DIM}Next: td edit ${short_id}  ·  td link ${short_id}  ·  td split ${short_id}${RESET}"
     fi
 }
@@ -93,7 +107,7 @@ cmd_split() {
 
     local id notes_path
     id=$(_generate_id)
-    notes_path="${NOTES_DIR}/${id}"
+    notes_path="${NOTES_DIR}/$(_notes_folder_name "$id" "$title")"
 
     # Create plan.md (parent context is injected dynamically via system prompt)
     mkdir -p "$notes_path"
@@ -151,12 +165,26 @@ _archive_todo() {
     worktree_path=$(echo "$todo" | jq -r '.worktree_path // empty')
     branch=$(echo "$todo" | jq -r '.branch // empty')
 
+    # Mark this todo and all descendant subtasks as done
     local updated
-    updated=$(_read_todos | jq --arg id "$id" \
-        'map(if .id == $id then .status = "done" else . end)')
+    updated=$(_read_todos | jq --arg id "$id" '
+        . as $all |
+        def desc($pid): [$all[] | select(.parent_id == $pid) | .id] |
+            if length == 0 then [] else . + (map(desc(.)) | add) end;
+        ([$id] + desc($id)) as $ids |
+        map(if (.id | IN($ids[])) then .status = "done" else . end)')
     _write_todos "$updated"
 
     echo -e "${GREEN}${SYM_CHECK}${RESET} Done: ${BOLD}${title}${RESET}"
+
+    # Report subtasks that were also marked done
+    local subtask_titles
+    subtask_titles=$(echo "$updated" | jq -r --arg id "$id" '.[] | select(.parent_id == $id and .status == "done") | .title')
+    if [[ -n "$subtask_titles" ]]; then
+        while IFS= read -r st; do
+            echo -e "  ${DIM}${SYM_CHECK} ${st}${RESET}"
+        done <<< "$subtask_titles"
+    fi
 
     # Offer to clean up git resources
     if [[ -n "$worktree_path" || -n "$branch" ]]; then
@@ -234,19 +262,41 @@ cmd_list() {
         exit 0
     fi
 
-    echo ""
-    echo -e "  ${BOLD}Active${RESET} ${DIM}(${count})${RESET}"
-    echo -e "  ${DIM}$(printf '%.0s─' {1..50})${RESET}"
+    # Split into TODO and backlog groups
+    local todo_items backlog_items todo_count backlog_count
+    todo_items=$(echo "$todos" | jq -r '[.[] | select((.group // "todo") == "todo")]')
+    backlog_items=$(echo "$todos" | jq -r '[.[] | select((.group // "todo") == "backlog")]')
+    todo_count=$(echo "$todo_items" | jq 'length')
+    backlog_count=$(echo "$backlog_items" | jq 'length')
 
-    echo "$todos" | jq -r '.[] |
-        (.id | split("-") | last) as $short_id |
-        "\n  \\033[0;32m◉\\033[0m \\033[1m\(.title)\\033[0m  \\033[2m\($short_id)\\033[0m" +
-        (if (.linear_ticket // "") != "" then "\n    \\033[0;35m\(.linear_ticket)\\033[0m" else "" end) +
-        (if (.branch // "") != "" then "  \\033[0;36m\(.branch)\\033[0m" else "" end) +
-        (if (.github_pr // "") != "" then "  \\033[0;36m\(.github_pr)\\033[0m" else "" end) +
-        (if (.worktree_path // "") != "" then "\n    \\033[2m\(.worktree_path)\\033[0m" else "" end) +
-        "\n    \\033[2m\(.created_at | split("T")[0])\\033[0m"
-    ' | while IFS= read -r line; do printf '%b\n' "$line"; done
+    _list_section() {
+        local items="$1" icon="$2"
+        echo "$items" | jq -r --arg icon "$icon" '
+            .[] |
+            (.id | split("-") | last) as $short_id |
+            "\n  \($icon) \u001b[1m\(.title)\u001b[0m  \u001b[2m\($short_id)\u001b[0m" +
+            (if (.linear_ticket // "") != "" then "\n    \u001b[0;35m\(.linear_ticket)\u001b[0m" else "" end) +
+            (if (.branch // "") != "" then "  \u001b[0;36m\(.branch)\u001b[0m" else "" end) +
+            (if (.github_pr // "") != "" then "  \u001b[0;36m\(.github_pr)\u001b[0m" else "" end) +
+            (if (.worktree_path // "") != "" then "\n    \u001b[2m\(.worktree_path)\u001b[0m" else "" end) +
+            "\n    \u001b[2m\(.created_at | split("T")[0])\u001b[0m"
+        ' | while IFS= read -r line; do printf '%b\n' "$line"; done
+    }
+
+    if (( todo_count > 0 )); then
+        echo ""
+        echo -e "  ${BOLD}TODO${RESET} ${DIM}(${todo_count})${RESET}"
+        echo -e "  ${DIM}$(printf '%.0s─' {1..50})${RESET}"
+        _list_section "$todo_items" "\\033[0;32m◉\\033[0m"
+    fi
+
+    if (( backlog_count > 0 )); then
+        echo ""
+        echo -e "  ${DIM}Backlog${RESET} ${DIM}(${backlog_count})${RESET}"
+        echo -e "  ${DIM}$(printf '%.0s─' {1..50})${RESET}"
+        _list_section "$backlog_items" "\\033[2m○\\033[0m"
+    fi
+
     echo ""
 }
 
@@ -347,6 +397,70 @@ cmd_show() {
 }
 
 # ---------------------------------------------------------------------------
+# _bump_group <id> <group> — Set a todo's group (todo/backlog)
+# ---------------------------------------------------------------------------
+
+_bump_group() {
+    local id="$1" new_group="$2"
+
+    # Move this todo and all descendant subtasks to the new group
+    local updated
+    updated=$(_read_todos | jq --arg id "$id" --arg g "$new_group" '
+        . as $all |
+        def desc($pid): [$all[] | select(.parent_id == $pid) | .id] |
+            if length == 0 then [] else . + (map(desc(.)) | add) end;
+        ([$id] + desc($id)) as $ids |
+        map(if (.id | IN($ids[])) then .group = $g else . end)')
+    _write_todos "$updated"
+
+    local todo title
+    todo=$(_get_todo "$id")
+    title=$(echo "$todo" | jq -r '.title')
+    local short_id="${id##*-}"
+    if [[ "$new_group" == "backlog" ]]; then
+        echo -e "${DIM}${SYM_DOT}${RESET} Moved to backlog: ${DIM}${title}${RESET}  ${DIM}${short_id}${RESET}"
+    else
+        echo -e "${GREEN}${SYM_DOT}${RESET} Moved to TODO: ${BOLD}${title}${RESET}  ${DIM}${short_id}${RESET}"
+    fi
+
+    # Report subtasks that were also moved
+    local subtask_titles
+    subtask_titles=$(echo "$updated" | jq -r --arg id "$id" --arg g "$new_group" \
+        '.[] | select(.parent_id == $id and .group == $g) | .title')
+    if [[ -n "$subtask_titles" ]]; then
+        while IFS= read -r st; do
+            echo -e "  ${DIM}${SYM_DOT} ${st}${RESET}"
+        done <<< "$subtask_titles"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# todo bump [id] — Toggle a todo between TODO and backlog
+# ---------------------------------------------------------------------------
+
+cmd_bump() {
+    local selected_id="${1:-}"
+
+    if [[ -z "$selected_id" ]]; then
+        selected_id=$(_pick_todo "Select todo to bump" "bump ❯ ") || exit 0
+    else
+        selected_id=$(_resolve_id "$selected_id") || exit 1
+    fi
+
+    local todo current_group new_group
+    todo=$(_get_todo "$selected_id")
+    current_group=$(echo "$todo" | jq -r '.group // "todo"')
+
+    if [[ "$current_group" == "backlog" ]]; then
+        new_group="todo"
+    else
+        new_group="backlog"
+    fi
+
+    _bump_group "$selected_id" "$new_group"
+}
+
+# ---------------------------------------------------------------------------
 # todo rename [id] ["new title"] — Rename a todo
 # ---------------------------------------------------------------------------
 
@@ -370,9 +484,25 @@ cmd_rename() {
         [[ -z "$new_title" ]] && exit 0
     fi
 
+    # Rename the notes folder on disk if it exists inside NOTES_DIR
+    local old_notes_path
+    old_notes_path=$(echo "$todo" | jq -r '.notes_path // empty')
+    local new_folder_name new_notes_path
+    new_folder_name=$(_notes_folder_name "$selected_id" "$new_title")
+    new_notes_path="${NOTES_DIR}/${new_folder_name}/plan.md"
+
+    if [[ -n "$old_notes_path" ]]; then
+        local old_dir new_dir
+        old_dir=$(dirname "$old_notes_path")
+        new_dir="${NOTES_DIR}/${new_folder_name}"
+        if [[ -d "$old_dir" && "$old_dir" == "${NOTES_DIR}/"* && "$old_dir" != "$new_dir" ]]; then
+            mv "$old_dir" "$new_dir"
+        fi
+    fi
+
     local updated
-    updated=$(_read_todos | jq --arg id "$selected_id" --arg title "$new_title" \
-        'map(if .id == $id then .title = $title else . end)')
+    updated=$(_read_todos | jq --arg id "$selected_id" --arg title "$new_title" --arg np "$new_notes_path" \
+        'map(if .id == $id then .title = $title | .notes_path = $np else . end)')
     _write_todos "$updated"
 
     echo -e "${GREEN}${SYM_CHECK}${RESET} Renamed: ${DIM}${old_title}${RESET} ${SYM_ARROW} ${BOLD}${new_title}${RESET}"
@@ -625,8 +755,18 @@ cmd_link() {
             local new_session
             new_session=$(_gum_input "Claude session UUID") || return 0
             [[ -z "$new_session" ]] && return 0
+            # Discover the real cwd from the Claude session file
+            local link_cwd=""
+            local session_file
+            session_file=$(find "$HOME/.claude/projects" -name "${new_session}.jsonl" 2>/dev/null | head -1)
+            if [[ -n "$session_file" ]]; then
+                link_cwd=$(head -5 "$session_file" | jq -r 'select(.cwd) | .cwd' | head -1)
+            fi
+            if [[ -z "$link_cwd" ]]; then
+                link_cwd="$(pwd)"
+            fi
             local updated
-            updated=$(_read_todos | jq --arg id "$selected_id" --arg sid "$new_session" --arg cwd "$(pwd)" \
+            updated=$(_read_todos | jq --arg id "$selected_id" --arg sid "$new_session" --arg cwd "$link_cwd" \
                 'map(if .id == $id then .session_id = $sid | .session_cwd = $cwd else . end)')
             _write_todos "$updated"
             echo -e "${GREEN}${SYM_CHECK}${RESET} Linked: ${BOLD}${title}${RESET} ${SYM_ARROW} ${GREEN}${SYM_SESSION} ${new_session}${RESET}"
@@ -747,13 +887,14 @@ _select_todo() {
         'map(if .id == $id then .last_opened_at = $now else . end)')
     _write_todos "$updated"
 
-    local worktree_path branch ticket session_id parent_id github_pr
+    local worktree_path branch ticket session_id parent_id github_pr group
     worktree_path=$(echo "$todo" | jq -r '.worktree_path // empty')
     branch=$(echo "$todo" | jq -r '.branch // empty')
     ticket=$(echo "$todo" | jq -r '.linear_ticket // empty')
     session_id=$(echo "$todo" | jq -r '.session_id // empty')
     parent_id=$(echo "$todo" | jq -r '.parent_id // empty')
     github_pr=$(echo "$todo" | jq -r '.github_pr // empty')
+    group=$(echo "$todo" | jq -r '.group // "todo"')
 
     # Show current state (omit metadata that matches parent for subtasks)
     echo ""
@@ -797,6 +938,11 @@ _select_todo() {
     options+=("Link")
     [[ -n "$ticket" ]] && options+=("Open Linear")
     [[ -n "$github_pr" || -n "$branch" ]] && options+=("Open GitHub")
+    if [[ "$group" == "backlog" ]]; then
+        options+=("Move to TODO")
+    else
+        options+=("Move to backlog")
+    fi
     options+=("Add subtask" "Mark as done" "Back")
 
     local choice
@@ -844,6 +990,12 @@ _select_todo() {
                 fi
             fi
             ;;
+        "Move to TODO")
+            _bump_group "$id" "todo"
+            ;;
+        "Move to backlog")
+            _bump_group "$id" "backlog"
+            ;;
         "Add subtask")
             cmd_split "$id"
             ;;
@@ -862,13 +1014,19 @@ cmd_picker() {
     local show_done=false
 
     while true; do
-        local fzf_lines
-        fzf_lines=$(_format_fzf_lines "$show_done")
+        # Build grouped fzf input: TODO items, then separator, then backlog items
+        local todo_lines backlog_lines
+        todo_lines=$(_format_fzf_lines "$show_done" "todo")
+        backlog_lines=$(_format_fzf_lines "$show_done" "backlog")
 
         # Prepend "New todo" option
         local input="__new__\t\t\t            ✦ New todo"
-        if [[ -n "$fzf_lines" ]]; then
-            input="${input}\n${fzf_lines}"
+        if [[ -n "$todo_lines" ]]; then
+            input="${input}\n${todo_lines}"
+        fi
+        if [[ -n "$backlog_lines" ]]; then
+            input="${input}\n__sep__\t\t\t\033[2m  ─── Backlog ───────────────────────────────────────────────────────────────────────────────────────────\033[0m"
+            input="${input}\n${backlog_lines}"
         fi
 
         local header="TODOs — enter: open · ctrl-d: toggle done · esc: quit"
@@ -923,6 +1081,11 @@ cmd_picker() {
             continue
         fi
 
+        # Skip separator line
+        if [[ "$selected_id" == "__sep__" ]]; then
+            continue
+        fi
+
         _select_todo "$selected_id"
     done
 }
@@ -933,6 +1096,222 @@ cmd_picker() {
 
 cmd_browse() {
     $NOTES_EDITOR "$NOTES_DIR"
+}
+
+# ---------------------------------------------------------------------------
+# td find [query] — Search Claude sessions, create a todo, and resume
+# ---------------------------------------------------------------------------
+
+_build_session_lines() {
+    # Scans ~/.claude/projects/*/*.jsonl and builds fzf-ready lines.
+    # Optional query argument filters sessions by content.
+    #
+    # Strategy: sort files by mtime, process most recent first, use head -100
+    # per file and a single jq -s call to extract metadata quickly.
+    # Without a query, only processes the most recent N files (skip_limit).
+    # With a query, pre-filters with grep -li before parsing.
+    local query="${1:-}"
+    local query_lower
+    query_lower=$(echo "$query" | tr '[:upper:]' '[:lower:]')
+    local projects_dir="${HOME}/.claude/projects"
+    local max_results=50
+    local skip_limit=80  # Without a query, only scan the N most recent files
+    local now_epoch today_start yesterday_start
+    now_epoch=$(date +%s)
+    today_start=$(date -j -f "%Y-%m-%d %H:%M:%S" "$(date +%Y-%m-%d) 00:00:00" +%s 2>/dev/null || date -d "today 00:00:00" +%s 2>/dev/null || echo "$now_epoch")
+    yesterday_start=$((today_start - 86400))
+
+    if [[ ! -d "$projects_dir" ]]; then
+        return
+    fi
+
+    # Build file list: sorted by mtime (newest first), optionally filtered by query
+    local file_list
+    if [[ -n "$query_lower" ]]; then
+        # With query: grep first (fast), then sort by mtime
+        file_list=$(grep -rli "$query_lower" "$projects_dir" --include='*.jsonl' 2>/dev/null | \
+            xargs -I{} stat -f '%m %N' {} 2>/dev/null | sort -rn | cut -d' ' -f2- | head -n "$skip_limit")
+    else
+        # Without query: just take the most recent files
+        file_list=$(find "$projects_dir" -name '*.jsonl' -type f -print0 2>/dev/null | \
+            xargs -0 stat -f '%m %N' 2>/dev/null | sort -rn | cut -d' ' -f2- | head -n "$skip_limit")
+    fi
+
+    [[ -z "$file_list" ]] && return
+
+    # The jq filter to extract session metadata from head of each file
+    local jq_filter
+    jq_filter='
+        . as $lines |
+        (first($lines[] | select(.cwd) | .cwd) // "") as $cwd |
+        (first($lines[] | select(.gitBranch) | .gitBranch) // "") as $branch |
+        [
+            $lines[]
+            | select(.message.role == "user")
+            | .message.content
+            | if type == "string" then .
+              elif type == "array" then [.[] | select(type == "object") | select(.type == "text" or (.type | not)) | .text // ""] | join(" ")
+              else tostring
+              end
+            | gsub("<[^>]+>"; "") | gsub("\\s+"; " ") | ltrimstr(" ") | rtrimstr(" ")
+            | select(length > 15)
+            | select(startswith("<local-command") | not)
+            | select(startswith("<command-") | not)
+            | select(startswith("Caveat:") | not)
+        ] as $msgs |
+        (if ($q | length) > 0 then
+            first($msgs[] | select(ascii_downcase | contains($q))) // null
+        else null end) as $match |
+        if ($msgs | length) == 0 then empty
+        else
+            ($match // $msgs[0])[0:120] + "\t" +
+            (if $match then "10" else "0" end) + "\t" +
+            $cwd + "\t" + $branch
+        end
+    '
+
+    # Collect raw TSV lines: mtime \t score \t session_id \t cwd \t branch \t display_line
+    # Pre-load session IDs already linked to todos so we can skip them
+    local linked_sessions
+    linked_sessions=$(_read_todos | jq -r '[.[] | .session_id // empty] | join("\n")')
+
+    local raw_lines=""
+
+    while IFS= read -r fpath; do
+        [[ -z "$fpath" || ! -f "$fpath" ]] && continue
+
+        local session_id mtime_epoch
+        session_id=$(basename "$fpath" .jsonl)
+
+        # Skip subagent sessions and sessions already linked to a todo
+        [[ "$session_id" == agent-* ]] && continue
+        if echo "$linked_sessions" | grep -qF "$session_id"; then
+            continue
+        fi
+
+        mtime_epoch=$(stat -f '%m' "$fpath" 2>/dev/null || stat -c '%Y' "$fpath" 2>/dev/null || echo "$now_epoch")
+
+        local meta
+        meta=$(head -100 "$fpath" | jq -r -s --arg q "$query_lower" "$jq_filter" 2>/dev/null) || continue
+        [[ -z "$meta" ]] && continue
+
+        local display_msg score cwd branch
+        display_msg=$(printf '%s' "$meta" | cut -f1)
+        score=$(printf '%s' "$meta" | cut -f2)
+        cwd=$(printf '%s' "$meta" | cut -f3)
+        branch=$(printf '%s' "$meta" | cut -f4)
+
+        # Age display
+        local age
+        if (( mtime_epoch >= today_start )); then
+            age="today"
+        elif (( mtime_epoch >= yesterday_start )); then
+            age="yesterday"
+        else
+            local diff=$(( now_epoch - mtime_epoch ))
+            if (( diff < 604800 )); then
+                age="$(( diff / 86400 ))d ago"
+            else
+                age=$(date -r "$mtime_epoch" '+%b %d' 2>/dev/null || date -d "@$mtime_epoch" '+%b %d' 2>/dev/null || echo "old")
+            fi
+        fi
+
+        local project_name
+        project_name=$(basename "${cwd:-unknown}" 2>/dev/null || echo "unknown")
+
+        local age_col proj_col branch_col
+        printf -v age_col '%-10s' "$age"
+        printf -v proj_col '%-16s' "${project_name:0:16}"
+        printf -v branch_col '%-30s' "${branch:0:30}"
+
+        local display_line="${age_col}  ${proj_col}  ${branch_col}  ${display_msg}"
+
+        raw_lines+="${mtime_epoch}"$'\t'"${score}"$'\t'"${session_id}"$'\t'"${cwd}"$'\t'"${branch}"$'\t'"${display_line}"$'\n'
+
+    done <<< "$file_list"
+
+    if [[ -z "$raw_lines" ]]; then
+        return
+    fi
+
+    # Sort by score desc then mtime desc, take top N, output as session_id \t cwd \t branch \t display
+    echo -n "$raw_lines" | sort -t$'\t' -k2,2rn -k1,1rn | head -n "$max_results" | while IFS=$'\t' read -r _mtime _score sid cwd branch display; do
+        printf '%s\t%s\t%s\t%s\n' "$sid" "$cwd" "$branch" "$display"
+    done
+}
+
+cmd_find() {
+    local query="${*:-}"
+    _check_fzf
+
+    echo -e "${DIM}Scanning sessions…${RESET}" >&2
+
+    local fzf_lines
+    fzf_lines=$(_build_session_lines "$query")
+
+    if [[ -z "$fzf_lines" ]]; then
+        echo -e "${YELLOW}No sessions found.${RESET}" >&2
+        exit 0
+    fi
+
+    local header="Select a session to adopt as a todo (ESC to cancel)"
+    if [[ -n "$query" ]]; then
+        header="Sessions matching \"${query}\" — select to adopt (ESC to cancel)"
+    fi
+
+    local result
+    result=$(echo -e "$fzf_lines" | fzf \
+        --header "$header" \
+        --layout=reverse \
+        --height=80% \
+        --with-nth=4.. \
+        --delimiter=$'\t' \
+        --header-first \
+        --border \
+        --ansi \
+        --no-multi \
+        --no-sort \
+        --prompt="find ❯ " \
+        --preview-window=hidden \
+    ) || true
+
+    if [[ -z "$result" ]]; then
+        exit 0
+    fi
+
+    local session_id session_cwd session_branch
+    session_id=$(echo "$result" | cut -f1)
+    session_cwd=$(echo "$result" | cut -f2)
+    session_branch=$(echo "$result" | cut -f3)
+
+    # Ask for a name
+    local title
+    title=$(_gum_input "Todo title for this session...") || exit 0
+    if [[ -z "$title" ]]; then
+        exit 0
+    fi
+
+    # Create the todo
+    local id
+    TODO_QUIET=1 id=$(cmd_new "$title")
+
+    # Link the session
+    local updated
+    updated=$(_read_todos | jq --arg id "$id" --arg sid "$session_id" --arg cwd "$session_cwd" --arg branch "$session_branch" \
+        'map(if .id == $id then
+            .session_id = $sid |
+            .session_cwd = $cwd |
+            (if $branch != "" then .branch = $branch else . end)
+        else . end)')
+    _write_todos "$updated"
+
+    local short_id="${id##*-}"
+    echo -e "${GREEN}${SYM_CHECK}${RESET} Created: ${BOLD}${title}${RESET}  ${DIM}${short_id}${RESET}"
+    echo -e "  ${GREEN}${SYM_SESSION}${RESET} Session: ${DIM}${session_id}${RESET}"
+    [[ -n "$session_branch" ]] && echo -e "  ${CYAN}${SYM_BRANCH}${RESET} Branch: ${session_branch}"
+
+    # Resume the session
+    _start_session "$id"
 }
 
 # ---------------------------------------------------------------------------
@@ -955,6 +1334,7 @@ cmd_help() {
     echo -e "  ${BOLD}Interactive${RESET}"
     echo ""
     echo -e "  ${CYAN}td${RESET}                              Open interactive app"
+    echo -e "  ${CYAN}td find${RESET} ${DIM}[query]${RESET}                 Find Claude session → create todo & resume"
     echo -e "  ${CYAN}td edit${RESET} ${DIM}[id]${RESET}                    Open plan in editor"
     echo -e "  ${CYAN}td link${RESET} ${DIM}[id]${RESET}                   Link Linear/GitHub/plan"
     echo -e "  ${CYAN}td open${RESET}                         Open links in browser"
@@ -962,8 +1342,9 @@ cmd_help() {
     echo ""
     echo -e "  ${BOLD}Non-interactive${RESET} ${DIM}(AI-friendly)${RESET}"
     echo ""
-    echo -e "  ${CYAN}td new${RESET} ${DIM}\"title\"${RESET}                  Create a new todo"
+    echo -e "  ${CYAN}td new${RESET} ${DIM}[-b] \"title\"${RESET}              Create a new todo (-b for backlog)"
     echo -e "  ${CYAN}td done${RESET} ${DIM}<id>${RESET}                    Mark as done"
+    echo -e "  ${CYAN}td bump${RESET} ${DIM}[id]${RESET}                    Toggle between TODO and backlog"
     echo -e "  ${CYAN}td rename${RESET} ${DIM}<id> \"title\"${RESET}          Rename a todo"
     echo -e "  ${CYAN}td delete${RESET} ${DIM}<id> [--force]${RESET}       Delete todo and all data"
     echo -e "  ${CYAN}td note${RESET} ${DIM}<id> \"text\"${RESET}             Append to plan"
