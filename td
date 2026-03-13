@@ -98,6 +98,7 @@ _subcmd_usage() {
 case "${1:-}" in
     new)         shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "new" "[-b|--backlog] \"title\""; cmd_new "$@" ;;
     done)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "done" "[id]"; cmd_done "${1:-}" ;;
+    try)         shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "try" "[id]"; cmd_try "${1:-}" ;;
     bump)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "bump" "[id]"; cmd_bump "${1:-}" ;;
     split)       shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "split" "[parent-id] [\"title\"]"; cmd_split "${1:-}" "${2:-}" ;;
     edit)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "edit" "[id]"; cmd_edit "${1:-}" ;;
@@ -118,7 +119,7 @@ case "${1:-}" in
     *)
         echo -e "${RED}Unknown command:${RESET} $1" >&2
         # Suggest closest match
-        _cmds=(new done bump split edit link open get note show list ls archive browse rename mv delete rm find version help)
+        _cmds=(new done try bump split edit link open get note show list ls archive browse rename mv delete rm find version help)
         _best="" _best_dist=999
         for _c in "${_cmds[@]}"; do
             # Simple: check prefix match or 1-char difference in length
