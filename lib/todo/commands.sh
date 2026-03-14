@@ -76,6 +76,72 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# td claude [-n "title"] — Create a todo and immediately open Claude
+# ---------------------------------------------------------------------------
+
+cmd_claude() {
+    local title=""
+
+    # Parse flags
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -n|--name) title="${2:-}"; shift 2 ;;
+            *) title="$1"; shift ;;
+        esac
+    done
+
+    if [[ -z "$title" ]]; then
+        title=$(_gum_input "What are you working on?")
+        if [[ -z "$title" ]]; then
+            exit 0
+        fi
+    fi
+
+    local id notes_path
+    id=$(_generate_id)
+    notes_path="${NOTES_DIR}/$(_notes_folder_name "$id" "$title")"
+
+    # Create plan.md
+    mkdir -p "$notes_path"
+    cat > "${notes_path}/plan.md" << EOF
+# ${title}
+
+Created: $(date '+%Y-%m-%d %H:%M')
+
+## Plan
+
+EOF
+
+    # Add todo to JSON
+    local now
+    now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local updated
+    updated=$(_read_todos | jq --arg id "$id" \
+        --arg title "$title" \
+        --arg created_at "$now" \
+        --arg notes_path "${notes_path}/plan.md" \
+        --arg status "active" \
+        --arg group "todo" \
+        '. + [{
+            id: $id,
+            title: $title,
+            created_at: $created_at,
+            branch: "",
+            worktree_path: "",
+            notes_path: $notes_path,
+            status: $status,
+            group: $group
+        }]')
+    _write_todos "$updated"
+
+    local short_id="${id##*-}"
+    echo -e "${GREEN}${SYM_CHECK}${RESET} Created: ${BOLD}${title}${RESET}  ${DIM}${short_id}${RESET}"
+
+    # Launch Claude session in current directory
+    _start_session "$id" "current-dir"
+}
+
+# ---------------------------------------------------------------------------
 # todo split [id] ["title"] — Create a subtask under a parent todo
 # ---------------------------------------------------------------------------
 
