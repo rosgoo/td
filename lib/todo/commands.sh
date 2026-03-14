@@ -1491,6 +1491,7 @@ cmd_help() {
     echo -e "  ${BOLD}Interactive${RESET}"
     echo ""
     echo -e "  ${CYAN}td${RESET}                              Open interactive app"
+    echo -e "  ${CYAN}td claude${RESET} ${DIM}\"title\"${RESET}               Create todo & start Claude immediately"
     echo -e "  ${CYAN}td find${RESET} ${DIM}[query]${RESET}                 Find Claude session → create todo & resume"
     echo -e "  ${CYAN}td edit${RESET} ${DIM}[id]${RESET}                    Open plan in editor"
     echo -e "  ${CYAN}td link${RESET} ${DIM}[id]${RESET}                   Link Linear/GitHub/plan"
