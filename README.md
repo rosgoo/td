@@ -94,7 +94,7 @@ To configure the hook manually, add this to `~/.claude/settings.json`:
 
 ```bash
 td claude "Fix the login bug"  # Create a todo and start Claude immediately
-td                              # Open the picker — select to start working
+td                              # Open the picker — select to resume the session
 td done                         # Mark it as done when finished
 ```
 
