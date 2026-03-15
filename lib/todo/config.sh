@@ -21,7 +21,7 @@ fi
 
 # --- Paths ------------------------------------------------------------------
 
-DATA_DIR="${TODO_DATA_DIR:-${HOME}/.claude-todos}"
+DATA_DIR="${TODO_DATA_DIR:-${HOME}/td}"
 TODOS_FILE="${DATA_DIR}/todos.json"
 NOTES_DIR="${DATA_DIR}/notes"
 REPO_ROOT="${TODO_REPO:-$(git rev-parse --show-toplevel 2>/dev/null || echo "")}"

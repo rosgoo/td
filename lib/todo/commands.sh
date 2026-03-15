@@ -1472,6 +1472,126 @@ cmd_update() {
 }
 
 # ---------------------------------------------------------------------------
+# td init — Initialize td in the current repo + configure settings
+# ---------------------------------------------------------------------------
+
+cmd_init() {
+    _check_jq
+
+    local settings_file="${TODO_SETTINGS}"
+    local settings_dir
+    settings_dir="$(dirname "$settings_file")"
+
+    echo ""
+    echo -e "${BOLD}td init${RESET} — Configure td settings"
+    echo ""
+
+    # Load existing values (if settings file exists)
+    local cur_data_dir="" cur_editor="" cur_linear_org="" cur_worktree_dir="" cur_branch_prefix=""
+    if [[ -f "$settings_file" ]]; then
+        cur_data_dir=$(jq -r '.data_dir // empty' "$settings_file" 2>/dev/null || true)
+        cur_editor=$(jq -r '.editor // empty' "$settings_file" 2>/dev/null || true)
+        cur_linear_org=$(jq -r '.linear_org // empty' "$settings_file" 2>/dev/null || true)
+        cur_worktree_dir=$(jq -r '.worktree_dir // empty' "$settings_file" 2>/dev/null || true)
+        cur_branch_prefix=$(jq -r '.branch_prefix // empty' "$settings_file" 2>/dev/null || true)
+    fi
+
+    # Defaults
+    : "${cur_data_dir:="~/td"}"
+    : "${cur_editor:=""}"
+    : "${cur_worktree_dir:=".claude/worktrees"}"
+    : "${cur_branch_prefix:="todo"}"
+
+    # Ask about each setting
+    echo -e "  ${BOLD}data_dir${RESET} — Where todos and notes are stored"
+    echo -e "  ${DIM}Current: ${cur_data_dir}${RESET}"
+    local new_data_dir
+    new_data_dir=$(_gum_input "Data directory" --value "$cur_data_dir")
+    [[ -z "$new_data_dir" ]] && new_data_dir="$cur_data_dir"
+    echo ""
+
+    echo -e "  ${BOLD}editor${RESET} — Editor for opening plan.md files"
+    echo -e "  ${DIM}Examples: \"code\", \"nvim\", \"open -a Obsidian\"${RESET}"
+    if [[ -n "$cur_editor" ]]; then
+        echo -e "  ${DIM}Current: ${cur_editor}${RESET}"
+    else
+        echo -e "  ${DIM}Current: (auto-detect from \$EDITOR)${RESET}"
+    fi
+    local new_editor
+    new_editor=$(_gum_input "Editor command" --value "$cur_editor")
+    echo ""
+
+    echo -e "  ${BOLD}linear_org${RESET} — Linear organization slug (for ticket URLs)"
+    if [[ -n "$cur_linear_org" ]]; then
+        echo -e "  ${DIM}Current: ${cur_linear_org}${RESET}"
+    else
+        echo -e "  ${DIM}Current: (disabled)${RESET}"
+    fi
+    local new_linear_org
+    new_linear_org=$(_gum_input "Linear org slug (leave empty to skip)" --value "$cur_linear_org")
+    echo ""
+
+    echo -e "  ${BOLD}worktree_dir${RESET} — Worktree directory relative to repo root"
+    echo -e "  ${DIM}Current: ${cur_worktree_dir}${RESET}"
+    local new_worktree_dir
+    new_worktree_dir=$(_gum_input "Worktree directory" --value "$cur_worktree_dir")
+    [[ -z "$new_worktree_dir" ]] && new_worktree_dir="$cur_worktree_dir"
+    echo ""
+
+    echo -e "  ${BOLD}branch_prefix${RESET} — Prefix for auto-created branches"
+    echo -e "  ${DIM}Current: ${cur_branch_prefix}${RESET}"
+    local new_branch_prefix
+    new_branch_prefix=$(_gum_input "Branch prefix" --value "$cur_branch_prefix")
+    [[ -z "$new_branch_prefix" ]] && new_branch_prefix="$cur_branch_prefix"
+    echo ""
+
+    # Write settings
+    mkdir -p "$settings_dir"
+    cat > "$settings_file" <<ENDJSON
+{
+  "data_dir": "${new_data_dir}",
+  "repo": "",
+  "editor": "${new_editor}",
+  "linear_org": "${new_linear_org}",
+  "worktree_dir": "${new_worktree_dir}",
+  "branch_prefix": "${new_branch_prefix}"
+}
+ENDJSON
+
+    echo -e "${GREEN}${SYM_CHECK}${RESET} Settings saved to ${DIM}${settings_file}${RESET}"
+
+    # Create data directory
+    local expanded_data_dir="${new_data_dir/#\~/$HOME}"
+    if [[ ! -d "$expanded_data_dir" ]]; then
+        mkdir -p "$expanded_data_dir/notes"
+        echo '[]' > "$expanded_data_dir/todos.json"
+        echo -e "${GREEN}${SYM_CHECK}${RESET} Created data directory at ${DIM}${new_data_dir}${RESET}"
+    else
+        echo -e "${DIM}Data directory already exists at ${new_data_dir}${RESET}"
+    fi
+
+    echo ""
+    echo -e "  ${DIM}Run ${CYAN}td${RESET} ${DIM}to get started.${RESET}"
+    echo ""
+}
+
+# ---------------------------------------------------------------------------
+# td settings — Print the settings file
+# ---------------------------------------------------------------------------
+
+cmd_settings() {
+    if [[ -f "$TODO_SETTINGS" ]]; then
+        echo -e "${DIM}${TODO_SETTINGS}${RESET}"
+        echo ""
+        cat "$TODO_SETTINGS"
+    else
+        echo -e "${RED}No settings file found.${RESET}" >&2
+        echo -e "Run ${CYAN}td init${RESET} to create one." >&2
+        exit 1
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # td help
 # ---------------------------------------------------------------------------
 
@@ -1525,7 +1645,12 @@ cmd_help() {
     echo ""
     echo -e "  ${DIM}$(printf '%.0s─' {1..54})${RESET}"
     echo ""
+    echo -e "  ${CYAN}td init${RESET}                        Configure settings interactively"
+    echo -e "  ${CYAN}td settings${RESET}                    Print settings file"
+    echo ""
+    echo -e "  ${DIM}$(printf '%.0s─' {1..54})${RESET}"
+    echo ""
     echo -e "  ${BOLD}Config${RESET}  ${DIM}~/.config/claude-todo/settings.json${RESET}"
-    echo -e "  ${BOLD}Data${RESET}    ${DIM}~/.claude-todos/${RESET}"
+    echo -e "  ${BOLD}Data${RESET}    ${DIM}~/td/${RESET}"
     echo ""
 }

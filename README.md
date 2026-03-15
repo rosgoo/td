@@ -156,6 +156,13 @@ td link abc123 ~/vault/my-notes.md                    # External notes file
 
 Subtasks inherit their parent's branch, worktree, and Linear ticket. Metadata that matches the parent is deduplicated in the picker view.
 
+### Setup
+
+| Command | Description |
+|---------|-------------|
+| `td init` | Configure settings interactively |
+| `td settings` | Print the current settings file |
+
 ### Other
 
 | Command | Description |
@@ -217,13 +224,34 @@ The hook only activates for sessions linked to a todo (matched by `session_id`).
 
 ## Configuration
 
-Settings live at `~/.config/claude-todo/settings.json`:
+Run `td init` to configure settings interactively. Run `td settings` to view the current settings file.
+
+```bash
+td init
+```
+
+This walks you through each setting:
+
+```
+  data_dir — Where todos and notes are stored
+  Current: ~/td
+
+  editor — Editor for opening plan.md files
+  Examples: "code", "nvim", "open -a Obsidian"
+  Current: (auto-detect from $EDITOR)
+
+  ...
+```
+
+For example, to use **Obsidian** as your notes editor, set `editor` to `open -a Obsidian`. This opens plan.md files directly in your Obsidian vault — useful if your `data_dir` is inside an Obsidian vault (e.g. `~/vault/td`).
+
+Settings are saved to `~/.config/claude-todo/settings.json`:
 
 ```json
 {
-  "data_dir": "~/.claude-todos",
+  "data_dir": "~/td",
   "repo": "",
-  "editor": "",
+  "editor": "open -a Obsidian",
   "linear_org": "",
   "worktree_dir": ".claude/worktrees",
   "branch_prefix": "todo"
@@ -232,7 +260,7 @@ Settings live at `~/.config/claude-todo/settings.json`:
 
 | Field | Description | Default |
 |-------|-------------|---------|
-| `data_dir` | Where todos and notes are stored | `~/.claude-todos` |
+| `data_dir` | Where todos and notes are stored | `~/td` |
 | `repo` | Git repo root (auto-detected if empty) | auto |
 | `editor` | Editor for notes | `$VISUAL` / `$EDITOR` / `open` |
 | `linear_org` | Linear organization slug (for ticket URLs) | _(disabled)_ |
@@ -246,7 +274,7 @@ Environment variables override settings: `TODO_DATA_DIR`, `TODO_REPO`, `TODO_EDI
 ## Data
 
 ```
-~/.claude-todos/
+~/td/
   todos.json              # All todo records
   notes/
     <id>/plan.md          # Notes for each todo (+ session notes appended by hooks)
@@ -262,7 +290,7 @@ Each todo record contains:
   "status": "active",
   "branch": "todo/fix-the-login-bug",
   "worktree_path": "/path/to/repo/.claude/worktrees/fix-the-login-bug",
-  "notes_path": "~/.claude-todos/notes/1773202250-266f62/plan.md",
+  "notes_path": "~/td/notes/1773202250-266f62/plan.md",
   "linear_ticket": "CORE-456",
   "github_pr": "https://github.com/org/repo/pull/789",
   "session_id": "a1b2c3d4-...",

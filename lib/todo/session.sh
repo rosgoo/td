@@ -207,7 +207,10 @@ _launch_claude() {
     github_pr=$(echo "$todo" | jq -r '.github_pr // empty')
     worktree_path=$(echo "$todo" | jq -r '.worktree_path // empty')
 
+    local short_id="${id##*-}"
     local context="# Current Todo: ${title}"
+    context="${context}\nTodo ID: ${short_id}"
+    context="${context}\nTD Directory: ${DATA_DIR}"
     [[ -n "$ticket" ]] && context="${context}\nLinear: ${ticket}"
     [[ -n "$branch" ]] && context="${context}\nBranch: ${branch}"
     [[ -n "$github_pr" ]] && context="${context}\nGitHub PR: ${github_pr}"

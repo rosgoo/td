@@ -13,7 +13,15 @@ set -euo pipefail
 #   3. Extracts a condensed log of the conversation since last compact
 #   4. Appends it to the todo's plan.md under a "## Session Notes" section
 
-TODOS_FILE="${TODOS_FILE:-${HOME}/.claude-todos/todos.json}"
+# Resolve data dir from settings (same logic as config.sh)
+_TODO_SETTINGS="${TODO_SETTINGS:-${HOME}/.config/claude-todo/settings.json}"
+if [[ -z "${TODOS_FILE:-}" && -f "$_TODO_SETTINGS" ]] && command -v jq &>/dev/null; then
+    _data_dir=$(jq -r '.data_dir // empty' "$_TODO_SETTINGS" 2>/dev/null | sed "s|^~|$HOME|")
+    if [[ -n "$_data_dir" ]]; then
+        TODOS_FILE="${_data_dir}/todos.json"
+    fi
+fi
+TODOS_FILE="${TODOS_FILE:-${HOME}/td/todos.json}"
 
 # Read hook payload from stdin
 payload=$(cat)

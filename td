@@ -114,6 +114,8 @@ case "${1:-}" in
     delete|rm)   shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "delete" "[id] [--force]"; cmd_delete "${1:-}" "${2:-}" ;;
     find)        shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "find" "[query]"; cmd_find "${*:-}" ;;
     do)          shift; [[ "${1:-}" == @(-h|--help) ]] && _subcmd_usage "do" "[-n \"title\"]"; cmd_do "$@" ;;
+    init)        shift; cmd_init ;;
+    settings)    shift; cmd_settings ;;
     update)      shift; cmd_update ;;
     version|--version|-v) echo "td ${TODO_VERSION}" ;;
     help|--help|-h) cmd_help ;;
@@ -121,7 +123,7 @@ case "${1:-}" in
     *)
         echo -e "${RED}Unknown command:${RESET} $1" >&2
         # Suggest closest match
-        _cmds=(new done try bump split edit link open get note show list ls archive browse rename mv delete rm find do update version help)
+        _cmds=(new done try bump split edit link open get note show list ls archive browse rename mv delete rm find do init settings update version help)
         _best="" _best_dist=999
         for _c in "${_cmds[@]}"; do
             # Simple: check prefix match or 1-char difference in length
