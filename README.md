@@ -173,8 +173,7 @@ When you select a todo, a menu offers:
 - **Resume/Start Claude session** — launches Claude with your notes injected as context
 - **Start Claude (new worktree)** — creates a git worktree with a dedicated branch
 - **Start Claude (current dir)** — starts a session in the current directory
-- **Promote to main repo** — moves a worktree branch back to the main repo checkout
-- **Move to worktree** — moves a main-repo branch into its own worktree
+- **Try on main repo** — apply worktree changes to a test branch on the main repo
 - **Edit notes** — open notes in your editor
 - **Open Linear / Open GitHub** — open linked URLs in browser
 - **Split into subtask** — break work into smaller pieces
@@ -184,8 +183,7 @@ When you select a todo, a menu offers:
 
 Todos can optionally use [git worktrees](https://git-scm.com/docs/git-worktree) for branch isolation. When you choose "Start Claude (new worktree)", a worktree is created at `.claude/worktrees/<slug>` with a branch named `todo/<slug>`.
 
-- **Promote**: moves a worktree branch to the main repo checkout (removes the worktree, checks out the branch in the main repo, migrates the Claude session)
-- **Demote**: moves a main-repo branch into a new worktree (with session migration)
+- **Try**: applies worktree diff to a test branch on the main repo without touching the worktree
 - **Done**: optionally cleans up the worktree and branch when marking complete
 - **Delete**: removes the worktree, branch, notes, and todo record
 

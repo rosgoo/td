@@ -338,102 +338,7 @@ test_worktree_create() {
     fi
 }
 
-test_promote() {
-    echo -e "${BOLD}test: promote worktree to main repo${RESET}"
-    todo new "Promote test" >/dev/null
-    local id
-    id=$(jq -r '.[-1].id' < "$TODO_DATA_DIR/todos.json")
 
-    # Create branch and worktree
-    git -C "$TODO_REPO" branch "todo/promote-test" 2>/dev/null
-    todo link "$id" "https://github.com/Maybern/maybern/tree/todo/promote-test" >/dev/null
-    (
-        export TODO_DATA_DIR TODO_REPO TODO_EDITOR
-        source "$TODO_BIN"
-        _init_worktree_for_todo "$id" >/dev/null 2>&1
-    )
-
-    local wt_path
-    wt_path=$(jq -r --arg id "$id" '.[] | select(.id == $id) | .worktree_path' < "$TODO_DATA_DIR/todos.json")
-    assert_not_empty "worktree exists before promote" "$wt_path"
-
-    # Promote (source script to call internal function, auto-confirm with yes)
-    (
-        export TODO_DATA_DIR TODO_REPO TODO_EDITOR
-        source "$TODO_BIN"
-        # Override _gum_confirm to always say yes
-        _gum_confirm() { return 0; }
-        _promote_worktree "$id" 2>&1
-    )
-
-    # Verify worktree_path cleared
-    local wt_after
-    wt_after=$(jq -r --arg id "$id" '.[] | select(.id == $id) | .worktree_path' < "$TODO_DATA_DIR/todos.json")
-    assert_eq "worktree_path cleared after promote" "" "$wt_after"
-
-    # Verify main repo is on the branch
-    local current_branch
-    current_branch=$(git -C "$TODO_REPO" branch --show-current)
-    assert_eq "main repo on promoted branch" "todo/promote-test" "$current_branch"
-
-    # Verify worktree directory removed
-    TESTS_RUN=$((TESTS_RUN + 1))
-    if [[ ! -d "$wt_path" ]]; then
-        TESTS_PASSED=$((TESTS_PASSED + 1))
-        echo -e "  ${GREEN}PASS${RESET} worktree directory removed"
-    else
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-        echo -e "  ${RED}FAIL${RESET} worktree directory removed"
-    fi
-}
-
-test_demote() {
-    echo -e "${BOLD}test: demote branch to worktree${RESET}"
-    todo new "Demote test" >/dev/null
-    local id
-    id=$(jq -r '.[-1].id' < "$TODO_DATA_DIR/todos.json")
-
-    # Create and checkout branch in main repo (no worktree)
-    git -C "$TODO_REPO" checkout -b "todo/demote-test" -q
-    todo link "$id" "https://github.com/Maybern/maybern/tree/todo/demote-test" >/dev/null
-
-    # Verify no worktree yet
-    local wt_before
-    wt_before=$(jq -r --arg id "$id" '.[] | select(.id == $id) | .worktree_path' < "$TODO_DATA_DIR/todos.json")
-    assert_eq "no worktree before demote" "" "$wt_before"
-
-    # Demote
-    (
-        export TODO_DATA_DIR TODO_REPO TODO_EDITOR
-        source "$TODO_BIN"
-        _gum_confirm() { return 0; }
-        _demote_to_worktree "$id" 2>&1
-    )
-
-    # Verify worktree_path set
-    local wt_after
-    wt_after=$(jq -r --arg id "$id" '.[] | select(.id == $id) | .worktree_path' < "$TODO_DATA_DIR/todos.json")
-    assert_not_empty "worktree_path set after demote" "$wt_after"
-
-    # Verify worktree directory exists
-    TESTS_RUN=$((TESTS_RUN + 1))
-    if [[ -d "$wt_after" ]]; then
-        TESTS_PASSED=$((TESTS_PASSED + 1))
-        echo -e "  ${GREEN}PASS${RESET} worktree directory created"
-    else
-        TESTS_FAILED=$((TESTS_FAILED + 1))
-        echo -e "  ${RED}FAIL${RESET} worktree directory created"
-    fi
-
-    # Verify main repo switched back to default branch (master or main)
-    local main_branch default_branch
-    main_branch=$(git -C "$TODO_REPO" branch --show-current)
-    default_branch="master"
-    if ! git -C "$TODO_REPO" show-ref --verify --quiet "refs/heads/master" 2>/dev/null; then
-        default_branch="main"
-    fi
-    assert_eq "main repo back on default branch" "$default_branch" "$main_branch"
-}
 
 test_done_with_worktree_cleanup() {
     echo -e "${BOLD}test: done cleans up worktree${RESET}"
@@ -594,8 +499,6 @@ test_split
 test_edit
 test_resolve_id_prefix
 test_worktree_create
-test_promote
-test_demote
 test_done_with_worktree_cleanup
 test_multiple_todos_isolation
 test_session_cwd_tracking
