@@ -25,14 +25,15 @@ DATA_DIR="${TODO_DATA_DIR:-${HOME}/td}"
 TODOS_FILE="${DATA_DIR}/todos.json"
 NOTES_DIR="${DATA_DIR}/notes"
 REPO_ROOT="${TODO_REPO:-$(git rev-parse --show-toplevel 2>/dev/null || echo "")}"
-if command -v open &>/dev/null; then
-    _FALLBACK_EDITOR="open"
+if [[ -n "${TODO_EDITOR:-}" ]]; then
+    NOTES_EDITOR="$TODO_EDITOR"
+elif command -v open &>/dev/null; then
+    NOTES_EDITOR="open"
 elif command -v xdg-open &>/dev/null; then
-    _FALLBACK_EDITOR="xdg-open"
+    NOTES_EDITOR="xdg-open"
 else
-    _FALLBACK_EDITOR="vi"
+    NOTES_EDITOR="vi"
 fi
-NOTES_EDITOR="${TODO_EDITOR:-${VISUAL:-${EDITOR:-$_FALLBACK_EDITOR}}}"
 LINEAR_ORG="${TODO_LINEAR_ORG:-}"
 WORKTREE_DIR="${TODO_WORKTREE_DIR:-.claude/worktrees}"
 BRANCH_PREFIX="${TODO_BRANCH_PREFIX:-todo}"
