@@ -1185,13 +1185,18 @@ cmd_browse() {
 # td clean — Remove orphaned todos and notes directories
 # ---------------------------------------------------------------------------
 
-cmd_clean() {
+cmd_sync() {
     local dry_run=false
     [[ "${1:-}" == @(-n|--dry-run) ]] && dry_run=true
 
-    local removed_todos=0 removed_dirs=0
+    local created_todos=0 removed_todos=0
 
-    # 1) Find todos whose notes directory no longer exists on disk
+    # 1) Create todos for orphaned notes directories
+    if [[ -d "$NOTES_DIR" ]]; then
+        _sync_create_from_dirs "$NOTES_DIR" "" "$dry_run"
+    fi
+
+    # 2) Find todos whose notes directory no longer exists on disk
     local orphan_ids
     orphan_ids=$(_read_todos | jq -r '.[] | select(.notes_path != null and .notes_path != "") | select(.notes_path | tostring | length > 0) | .id' )
 
@@ -1208,7 +1213,7 @@ cmd_clean() {
             if $dry_run; then
                 echo -e "${DIM}Would remove todo:${RESET} ${BOLD}${title}${RESET} ${DIM}(${id})${RESET}"
             else
-                # Recursively clean subtasks first
+                # Recursively remove subtasks first
                 local subtask_ids
                 subtask_ids=$(_read_todos | jq -r --arg pid "$id" '[.[] | select(.parent_id == $pid) | .id] | .[]')
                 for sid in $subtask_ids; do
@@ -1230,44 +1235,92 @@ cmd_clean() {
         fi
     done
 
-    # 2) Find notes directories that don't match any todo
-    if [[ -d "$NOTES_DIR" ]]; then
-        local all_notes_dirs
-        all_notes_dirs=$(_read_todos | jq -r '[.[] | .notes_path // "" | select(. != "") | split("/")[:-1] | join("/")] | unique | .[]')
-
-        for dir in "$NOTES_DIR"/*/; do
-            [[ ! -d "$dir" ]] && continue
-            dir="${dir%/}"  # strip trailing slash
-            local matched=false
-            while IFS= read -r np; do
-                [[ -z "$np" ]] && continue
-                if [[ "$np" == "$dir" || "$np" == "$dir"/* ]]; then
-                    matched=true
-                    break
-                fi
-            done <<< "$all_notes_dirs"
-
-            if ! $matched; then
-                local dirname
-                dirname=$(basename "$dir")
-                if $dry_run; then
-                    echo -e "${DIM}Would remove dir:${RESET}  ${BOLD}${dirname}/${RESET}"
-                else
-                    rm -rf "$dir"
-                    echo -e "${DIM}Removed orphaned dir:${RESET}  ${BOLD}${dirname}/${RESET}"
-                    ((removed_dirs++)) || true
-                fi
-            fi
-        done
-    fi
-
     if $dry_run; then
-        echo -e "\n${DIM}Dry run — no changes made. Run ${CYAN}td clean${DIM} to apply.${RESET}"
-    elif (( removed_todos == 0 && removed_dirs == 0 )); then
-        echo -e "${GREEN}${SYM_CHECK}${RESET} Nothing to clean"
+        echo -e "\n${DIM}Dry run — no changes made. Run ${CYAN}td sync${DIM} to apply.${RESET}"
+    elif (( created_todos == 0 && removed_todos == 0 )); then
+        echo -e "${GREEN}${SYM_CHECK}${RESET} Already in sync"
     else
-        echo -e "${GREEN}${SYM_CHECK}${RESET} Cleaned ${removed_todos} todo(s), ${removed_dirs} dir(s)"
+        local parts=()
+        (( created_todos > 0 )) && parts+=("created ${created_todos}")
+        (( removed_todos > 0 )) && parts+=("removed ${removed_todos}")
+        local IFS=", "
+        echo -e "${GREEN}${SYM_CHECK}${RESET} Synced: ${parts[*]}"
     fi
+}
+
+# _sync_create_from_dirs — Create todos for orphaned directories (recursive).
+# Args: base_dir parent_id dry_run
+_sync_create_from_dirs() {
+    local base_dir="$1" parent_id="$2" dry_run="$3"
+
+    for dir in "$base_dir"/*/; do
+        [[ ! -d "$dir" ]] && continue
+        dir="${dir%/}"
+
+        # Check if any todo already references this directory
+        local dir_matched
+        dir_matched=$(_read_todos | jq -r --arg dir "$dir" \
+            '[.[] | select(.notes_path != null and .notes_path != "") | select((.notes_path | split("/")[:-1] | join("/")) == $dir)] | length')
+        [[ "$dir_matched" != "0" ]] && continue
+
+        # Extract title from plan.md heading, fall back to folder name
+        local title
+        if [[ -f "${dir}/plan.md" ]]; then
+            title=$(head -1 "${dir}/plan.md" | sed 's/^# *//')
+        fi
+        [[ -z "${title:-}" ]] && title=$(basename "$dir")
+
+        if $dry_run; then
+            local label="${title}"
+            [[ -n "$parent_id" ]] && label="  ↳ ${title}"
+            echo -e "${DIM}Would create todo:${RESET} ${BOLD}${label}${RESET}"
+            # Still recurse subdirs in dry-run
+            _sync_create_from_dirs "$dir" "dry-run-parent" "$dry_run"
+        else
+            local id now notes_path
+            id=$(_generate_id)
+            now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            notes_path="${dir}/plan.md"
+
+            # Create plan.md if it doesn't exist
+            if [[ ! -f "$notes_path" ]]; then
+                cat > "$notes_path" << EOF
+# ${title}
+
+Created: $(date '+%Y-%m-%d %H:%M')
+
+## Plan
+
+EOF
+            fi
+
+            # Build the todo JSON entry
+            local new_todo
+            if [[ -n "$parent_id" ]]; then
+                new_todo=$(jq -n --arg id "$id" --arg title "$title" \
+                    --arg created_at "$now" --arg notes_path "$notes_path" \
+                    --arg parent_id "$parent_id" \
+                    '{id: $id, title: $title, created_at: $created_at, branch: "", worktree_path: "", notes_path: $notes_path, status: "active", group: "todo", parent_id: $parent_id}')
+            else
+                new_todo=$(jq -n --arg id "$id" --arg title "$title" \
+                    --arg created_at "$now" --arg notes_path "$notes_path" \
+                    '{id: $id, title: $title, created_at: $created_at, branch: "", worktree_path: "", notes_path: $notes_path, status: "active", group: "todo"}')
+            fi
+
+            local updated
+            updated=$(_read_todos | jq --argjson todo "$new_todo" '. + [$todo]')
+            _write_todos "$updated"
+
+            local short_id="${id##*-}"
+            local label="${title}"
+            [[ -n "$parent_id" ]] && label="  ↳ ${title}"
+            echo -e "${DIM}Created todo:${RESET} ${BOLD}${label}${RESET} ${DIM}(${short_id})${RESET}"
+            ((created_todos++)) || true
+
+            # Recurse into subdirectories for subtasks
+            _sync_create_from_dirs "$dir" "$id" "$dry_run"
+        fi
+    done
 }
 
 # ---------------------------------------------------------------------------
@@ -1661,7 +1714,7 @@ ENDJSON
     # Create data directory
     local expanded_data_dir="${new_data_dir/#\~/$HOME}"
     if [[ ! -d "$expanded_data_dir" ]]; then
-        mkdir -p "$expanded_data_dir/notes"
+        mkdir -p "$expanded_data_dir/todo"
         echo '[]' > "$expanded_data_dir/todos.json"
         echo -e "${GREEN}${SYM_CHECK}${RESET} Created data directory at ${DIM}${new_data_dir}${RESET}"
     else
@@ -1731,7 +1784,7 @@ cmd_help() {
     echo -e "  ${CYAN}td link${RESET} ${DIM}<id> <url|path>${RESET}        Link Linear/GitHub/plan"
     echo -e "  ${CYAN}td list${RESET}                         List active todos"
     echo -e "  ${CYAN}td archive${RESET}                      Show completed todos"
-    echo -e "  ${CYAN}td clean${RESET} ${DIM}[-n]${RESET}                    Remove orphaned todos & dirs"
+    echo -e "  ${CYAN}td sync${RESET} ${DIM}[-n]${RESET}                     Two-way sync: create/remove todos & dirs"
     echo -e "  ${CYAN}td version${RESET}                      Print version"
     echo -e "  ${CYAN}td update${RESET}                       Update to latest version"
     echo ""

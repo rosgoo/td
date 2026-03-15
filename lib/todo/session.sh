@@ -244,8 +244,29 @@ _launch_claude() {
     context_args=(--append-system-prompt "$(echo -e "$context")")
 
     if [[ -n "$session_id" ]]; then
-        echo -e "${GREEN}${SYM_SESSION}${RESET} Resuming session ${DIM}${session_id}${RESET}"
-        exec claude --resume "$session_id" "${context_args[@]}"
+        # Verify the session file actually exists before trying --resume
+        local session_file_found=false
+        local encoded_cwd
+        encoded_cwd=$(pwd | sed 's|/|-|g')
+        local project_dir="$HOME/.claude/projects/${encoded_cwd}"
+        if [[ -f "${project_dir}/${session_id}.jsonl" ]]; then
+            session_file_found=true
+        fi
+
+        if [[ "$session_file_found" == true ]]; then
+            echo -e "${GREEN}${SYM_SESSION}${RESET} Resuming session ${DIM}${session_id}${RESET}"
+            exec claude --resume "$session_id" "${context_args[@]}"
+        else
+            echo -e "${YELLOW}${SYM_SESSION}${RESET} Previous session not found on disk. Starting fresh session."
+            session_id=$(uuidgen | tr '[:upper:]' '[:lower:]')
+            local session_cwd
+            session_cwd=$(pwd)
+            local updated
+            updated=$(_read_todos | jq --arg id "$id" --arg sid "$session_id" --arg cwd "$session_cwd" \
+                'map(if .id == $id then .session_id = $sid | .session_cwd = $cwd else . end)')
+            _write_todos "$updated"
+            exec claude --session-id "$session_id" "${context_args[@]}"
+        fi
     else
         session_id=$(uuidgen | tr '[:upper:]' '[:lower:]')
         local session_cwd

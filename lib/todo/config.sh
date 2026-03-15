@@ -23,7 +23,7 @@ fi
 
 DATA_DIR="${TODO_DATA_DIR:-${HOME}/td}"
 TODOS_FILE="${DATA_DIR}/todos.json"
-NOTES_DIR="${DATA_DIR}/notes"
+NOTES_DIR="${DATA_DIR}/todo"
 REPO_ROOT="${TODO_REPO:-$(git rev-parse --show-toplevel 2>/dev/null || echo "")}"
 if [[ -n "${TODO_EDITOR:-}" ]]; then
     NOTES_EDITOR="$TODO_EDITOR"

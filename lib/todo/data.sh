@@ -8,7 +8,18 @@
 # --- Setup ------------------------------------------------------------------
 
 _ensure_setup() {
-    mkdir -p "$DATA_DIR" "$NOTES_DIR"
+    mkdir -p "$DATA_DIR"
+    # Migrate notes/ → todo/ (one-time)
+    if [[ -d "${DATA_DIR}/notes" && ! -d "${DATA_DIR}/todo" ]]; then
+        mv "${DATA_DIR}/notes" "${DATA_DIR}/todo"
+        # Update notes_path references in todos.json
+        if [[ -f "$TODOS_FILE" ]]; then
+            local migrated
+            migrated=$(jq 'map(if .notes_path then .notes_path |= gsub("/notes/"; "/todo/") else . end)' "$TODOS_FILE")
+            echo "$migrated" > "$TODOS_FILE"
+        fi
+    fi
+    mkdir -p "$NOTES_DIR"
     if [[ ! -f "$TODOS_FILE" ]]; then
         echo '[]' > "$TODOS_FILE"
     fi
