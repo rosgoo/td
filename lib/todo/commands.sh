@@ -171,9 +171,18 @@ cmd_split() {
         fi
     fi
 
-    local id notes_path
+    local id notes_path parent_notes_dir
     id=$(_generate_id)
-    notes_path="${NOTES_DIR}/$(_notes_folder_name "$id" "$title")"
+
+    # Nest subtask notes inside parent's notes directory
+    local parent_notes
+    parent_notes=$(echo "$parent" | jq -r '.notes_path // empty')
+    if [[ -n "$parent_notes" ]]; then
+        parent_notes_dir=$(dirname "$parent_notes")
+    else
+        parent_notes_dir="$NOTES_DIR"
+    fi
+    notes_path="${parent_notes_dir}/$(_notes_folder_name "$id" "$title" "$parent_notes_dir")"
 
     # Create plan.md (parent context is injected dynamically via system prompt)
     mkdir -p "$notes_path"

@@ -43,18 +43,19 @@ _slugify() {
 }
 
 _notes_folder_name() {
-    # Returns a human-readable folder name for use in NOTES_DIR.
+    # Returns a human-readable folder name for use in a base directory.
     # Uses just the slug, with a -2, -3 suffix if there's a collision.
-    local id="$1" title="$2"
+    # Optional 3rd arg overrides the base directory (default: NOTES_DIR).
+    local id="$1" title="$2" base_dir="${3:-$NOTES_DIR}"
     local slug
     slug=$(_slugify "$title")
     [[ -z "$slug" ]] && slug="untitled"
 
     local candidate="$slug"
     local n=2
-    while [[ -d "${NOTES_DIR}/${candidate}" ]]; do
+    while [[ -d "${base_dir}/${candidate}" ]]; do
         # Check if this folder belongs to the same todo (already correct)
-        local existing_plan="${NOTES_DIR}/${candidate}/plan.md"
+        local existing_plan="${base_dir}/${candidate}/plan.md"
         if [[ -f "$existing_plan" ]]; then
             local existing_id
             existing_id=$(_read_todos | jq -r --arg np "${existing_plan}" '.[] | select(.notes_path == $np) | .id')
@@ -133,7 +134,20 @@ _ensure_notes() {
     # Creates plan.md for a todo if it doesn't exist yet. Returns the file path.
     local id="$1"
     local title="$2"
-    local notes_path="${NOTES_DIR}/$(_notes_folder_name "$id" "$title")"
+    local base_dir="$NOTES_DIR"
+
+    # If this is a subtask, nest under the parent's notes directory
+    local parent_id
+    parent_id=$(_read_todos | jq -r --arg id "$id" '.[] | select(.id == $id) | .parent_id // empty')
+    if [[ -n "$parent_id" ]]; then
+        local parent_notes
+        parent_notes=$(_read_todos | jq -r --arg id "$parent_id" '.[] | select(.id == $id) | .notes_path // empty')
+        if [[ -n "$parent_notes" ]]; then
+            base_dir=$(dirname "$parent_notes")
+        fi
+    fi
+
+    local notes_path="${base_dir}/$(_notes_folder_name "$id" "$title" "$base_dir")"
 
     if [[ ! -f "${notes_path}/plan.md" ]]; then
         mkdir -p "$notes_path"
