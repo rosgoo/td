@@ -95,6 +95,33 @@ To configure the hook manually instead, add this to `~/.claude/settings.json`:
 }
 ```
 
+### Editor setup
+
+**Obsidian:**
+
+Set `editor` to `"obsidian"` in your settings to open notes directly in Obsidian using the URI scheme. Your `data_dir` must be inside (or be) an Obsidian vault:
+
+```json
+{
+  "data_dir": "~/td",
+  "editor": "obsidian"
+}
+```
+
+`td edit` will open the note via `obsidian://open?vault=td&file=...`, navigating directly to the file.
+
+**Cursor:**
+
+Set `editor` to `"cursor"` to open notes in Cursor:
+
+```json
+{
+  "editor": "cursor"
+}
+```
+
+This uses the `cursor` CLI command, which Cursor installs via **Cursor > Install 'cursor' command** in the command palette.
+
 ### Dependencies
 
 | Tool | Purpose |
@@ -243,7 +270,7 @@ This walks you through each setting:
   ...
 ```
 
-For example, to use **Obsidian** as your notes editor, set `editor` to `open -a Obsidian`. This opens plan.md files directly in your Obsidian vault — useful if your `data_dir` is inside an Obsidian vault (e.g. `~/vault/td`).
+For example, to use **Obsidian** as your notes editor, set `editor` to `"obsidian"`. This opens notes directly in Obsidian via the URI scheme — your `data_dir` should be inside (or be) an Obsidian vault. See [Editor setup](#editor-setup) for more options.
 
 Settings are saved to `~/.config/claude-todo/settings.json`:
 
@@ -251,7 +278,7 @@ Settings are saved to `~/.config/claude-todo/settings.json`:
 {
   "data_dir": "~/td",
   "repo": "",
-  "editor": "open -a Obsidian",
+  "editor": "obsidian",
   "linear_org": "",
   "worktree_dir": ".claude/worktrees",
   "branch_prefix": "todo"

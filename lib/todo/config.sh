@@ -34,6 +34,24 @@ elif command -v xdg-open &>/dev/null; then
 else
     NOTES_EDITOR="vi"
 fi
+
+# _open_notes — Open a notes file (or directory) in the configured editor.
+# When editor is "obsidian", uses the Obsidian URI scheme to open files
+# directly in the vault derived from DATA_DIR.
+_open_notes() {
+    local target="$1"
+    if [[ "$NOTES_EDITOR" == "obsidian" ]]; then
+        local vault_name
+        vault_name=$(basename "$DATA_DIR")
+        # Get path relative to the vault root
+        local rel_path="${target#$DATA_DIR/}"
+        # URL-encode spaces
+        rel_path="${rel_path// /%20}"
+        open "obsidian://open?vault=${vault_name}&file=${rel_path}"
+    else
+        $NOTES_EDITOR "$target"
+    fi
+}
 LINEAR_ORG="${TODO_LINEAR_ORG:-}"
 WORKTREE_DIR="${TODO_WORKTREE_DIR:-.claude/worktrees}"
 BRANCH_PREFIX="${TODO_BRANCH_PREFIX:-todo}"

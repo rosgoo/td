@@ -310,7 +310,7 @@ cmd_edit() {
         notes_path=$(_ensure_notes "$selected_id" "$title")
     fi
 
-    $NOTES_EDITOR "$notes_path"
+    _open_notes "$notes_path"
 }
 
 # ---------------------------------------------------------------------------
@@ -1061,7 +1061,7 @@ _select_todo() {
             cmd_split "$id"
             ;;
         "Edit plan")
-            $NOTES_EDITOR "$notes_path"
+            _open_notes "$notes_path"
             ;;
         "Open")
             local open_urls=()
@@ -1178,7 +1178,7 @@ cmd_picker() {
 # ---------------------------------------------------------------------------
 
 cmd_browse() {
-    $NOTES_EDITOR "$NOTES_DIR"
+    _open_notes "$NOTES_DIR"
 }
 
 # ---------------------------------------------------------------------------
