@@ -108,7 +108,7 @@ Set `editor` to `"obsidian"` in your settings to open notes directly in Obsidian
 }
 ```
 
-`td edit` will open the note via `obsidian://open?vault=td&file=...`, navigating directly to the file.
+`td edit` will open the note via `obsidian://open?vault=td&file=...`, navigating directly to the file. You can also create folders directly in Obsidian and run `td sync` to import them as todos.
 
 **Cursor:**
 
@@ -189,6 +189,15 @@ Subtasks inherit their parent's branch, worktree, and Linear ticket. Metadata th
 |---------|-------------|
 | `td init` | Configure settings interactively |
 | `td settings` | Print the current settings file |
+
+### Sync
+
+| Command | Description |
+|---------|-------------|
+| `td sync` | Two-way sync: create todos for orphaned dirs, remove todos for missing dirs |
+| `td sync -n` | Dry run — show what would happen without making changes |
+
+If you create a folder in `~/td/todo/` manually (e.g. from Obsidian), `td sync` picks it up and creates a todo for it. If you delete a folder, `td sync` removes the orphaned todo. Nested subdirectories become subtasks automatically.
 
 ### Other
 
@@ -303,8 +312,8 @@ Environment variables override settings: `TODO_DATA_DIR`, `TODO_REPO`, `TODO_EDI
 ```
 ~/td/
   todos.json              # All todo records
-  notes/
-    <id>/plan.md          # Notes for each todo (+ session notes appended by hooks)
+  todo/
+    <title>/plan.md       # Notes for each todo (+ session notes appended by hooks)
 ```
 
 Each todo record contains:
@@ -317,7 +326,7 @@ Each todo record contains:
   "status": "active",
   "branch": "todo/fix-the-login-bug",
   "worktree_path": "/path/to/repo/.claude/worktrees/fix-the-login-bug",
-  "notes_path": "~/td/notes/1773202250-266f62/plan.md",
+  "notes_path": "~/td/todo/Fix the login bug/plan.md",
   "linear_ticket": "CORE-456",
   "github_pr": "https://github.com/org/repo/pull/789",
   "session_id": "a1b2c3d4-...",
