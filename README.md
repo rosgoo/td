@@ -9,25 +9,37 @@ Minimal task and session manager for agentic coding.
 
 ## Features
 
-- **Session persistence** — Links Claude sessions and working directories to tasks so you can resume exactly where you left off and reduce context overload
+- **Session persistence** — links Claude sessions and working directories to tasks so you can resume exactly where you left off and reduce context overload
 - **Plan-aware sessions** — each todo has a `plan.md` that gets injected into Claude's system prompt, so context carries across sessions automatically
 - **Subtasks** — break todos into smaller pieces that inherit their parent's branch, worktree, and links
 - **`td do`** — create a todo and drop into a Claude session directly
 - **`/td` slash command** — manage todos from inside any Claude Code session
 - **Git worktree isolation** — optionally spin up a dedicated worktree and branch per todo, keeping work separated
-- `td try` lets you seamlessly test worktree code in your main by diffing all worktree changes and putting them on a test branch.
+- **`td try`** — test worktree changes on your main repo without switching directories, reinstalling dependencies, or rebuilding
 - **Linear & GitHub linking** — attach tickets, PRs, and branches to todos; open them from the picker
 - **Pre-compact hook** — automatically snapshots conversation context into `plan.md` before Claude compacts, so notes are never lost
 - **Non-interactive CLI** — every action has an ID-addressable command, so Claude (or scripts) can manage todos without a UI
 - **Self-updating** — `td update` pulls the latest release
 
-## Install
+## Quick Start
+
+```bash
+td do "Fix the login bug"       # Create a todo and start Claude immediately
+td                               # Open the picker — select to resume the session
+td done                          # Mark it as done when finished
+```
+
+Inside a Claude session, use the `/td` slash command to manage todos without leaving the conversation.
+
+---
+
+## Installation
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rosgoo/td/main/install-remote.sh | bash
 ```
 
-This downloads the latest release, installs dependencies (`jq`, `fzf`, `gum`) via Homebrew, and sets up the Claude Code hook and `/td` slash command. Make sure `~/.local/bin` is in your `PATH`:
+This downloads the latest release, installs dependencies via Homebrew, and sets up the Claude Code hook and `/td` slash command. Make sure `~/.local/bin` is in your `PATH`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -55,13 +67,15 @@ cd td
 ./install.sh
 ```
 
-To skip automatic hook injection, pass `--no-hooks`:
+### Hook configuration
+
+The installer automatically injects the PreCompact hook into `~/.claude/settings.json`. To skip this, pass `--no-hooks`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rosgoo/td/main/install-remote.sh | bash -s -- --no-hooks
 ```
 
-To configure the hook manually, add this to `~/.claude/settings.json`:
+To configure the hook manually instead, add this to `~/.claude/settings.json`:
 
 ```json
 {
@@ -90,15 +104,7 @@ To configure the hook manually, add this to `~/.claude/settings.json`:
 | [gum](https://github.com/charmbracelet/gum) | Interactive prompts |
 | [Claude Code](https://claude.ai/code) | AI coding sessions |
 
-## Quick Start
-
-```bash
-td do "Fix the login bug"  # Create a todo and start Claude immediately
-td                              # Open the picker — select to resume the session
-td done                         # Mark it as done when finished
-```
-
-Inside a Claude session, use the `/td` slash command to manage todos without leaving the conversation.
+---
 
 ## Commands
 
@@ -159,13 +165,29 @@ Subtasks inherit their parent's branch, worktree, and Linear ticket. Metadata th
 | `td version` | Print version |
 | `td help` | Show help |
 
+---
+
 ## Worktrees
 
-Todos can optionally use [git worktrees](https://git-scm.com/docs/git-worktree) for branch isolation. When you choose "Start Claude (new worktree)", a worktree is created at `.claude/worktrees/<slug>` with a branch named `todo/<slug>`.
+Todos can optionally use [git worktrees](https://git-scm.com/docs/git-worktree) for branch isolation. When you choose "Start Claude (new worktree)" from the picker, a worktree is created at `.claude/worktrees/<slug>` with a branch named `todo/<slug>`.
 
-- **Try**: applies worktree diff to a test branch on the main repo without touching the worktree
-- **Done**: optionally cleans up the worktree and branch when marking complete
-- **Delete**: removes the worktree, branch, notes, and todo record
+### `td try`
+
+Use `td try` to test worktree changes on your main repo without leaving the worktree. It diffs all changes from the worktree branch against main and applies them as a single commit on a `try-<slug>` branch in the main repo.
+
+This avoids the pain of switching back to main just to test — no reinstalling dependencies, no rebuilding, no restarting dev servers. Your worktree stays untouched while you can run the full test suite or start the app from the main repo on the try branch.
+
+```bash
+td try           # pick a todo from the picker
+td try abc123    # or pass an ID directly
+```
+
+### Lifecycle
+
+- **Done** — `td done` optionally cleans up the worktree and branch
+- **Delete** — `td delete` removes the worktree, branch, notes, and todo record
+
+---
 
 ## Claude Integration
 
@@ -185,35 +207,13 @@ td done abc123
 td delete abc123 --force
 ```
 
-## Hooks
-
-The installer sets up Claude Code [hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) that integrate with your todo workflow.
-
-### PreCompact — auto-save session notes
+### PreCompact hook
 
 Before Claude Code compacts your conversation context (auto or manual), the `pre-compact` hook snapshots the conversation into your todo's `plan.md` under a `## Session Notes` section. Each compact appends a timestamped block with user/assistant messages, so context is never fully lost.
 
-The hook is configured in `~/.claude/settings.json`:
+The hook only activates for sessions linked to a todo (matched by `session_id`). Sessions without a todo are unaffected.
 
-```json
-{
-  "hooks": {
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "td-pre-compact",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-The hook only activates for sessions that are linked to a todo (matched by `session_id`). Sessions without a todo are unaffected.
+---
 
 ## Configuration
 
@@ -240,6 +240,8 @@ Settings live at `~/.config/claude-todo/settings.json`:
 | `branch_prefix` | Prefix for auto-created branches | `todo` |
 
 Environment variables override settings: `TODO_DATA_DIR`, `TODO_REPO`, `TODO_EDITOR`, `TODO_LINEAR_ORG`, `TODO_WORKTREE_DIR`, `TODO_BRANCH_PREFIX`.
+
+---
 
 ## Data
 
