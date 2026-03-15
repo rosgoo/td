@@ -1219,13 +1219,13 @@ cmd_clean() {
                     updated=$(_read_todos | jq --arg id "$sid" '[.[] | select(.id != $id)]')
                     _write_todos "$updated"
                     echo -e "${DIM}Removed orphaned subtask:${RESET} ${BOLD}${stitle}${RESET}"
-                    ((removed_todos++))
+                    ((removed_todos++)) || true
                 done
                 local updated
                 updated=$(_read_todos | jq --arg id "$id" '[.[] | select(.id != $id)]')
                 _write_todos "$updated"
                 echo -e "${DIM}Removed orphaned todo:${RESET} ${BOLD}${title}${RESET}"
-                ((removed_todos++))
+                ((removed_todos++)) || true
             fi
         fi
     done
@@ -1255,7 +1255,7 @@ cmd_clean() {
                 else
                     rm -rf "$dir"
                     echo -e "${DIM}Removed orphaned dir:${RESET}  ${BOLD}${dirname}/${RESET}"
-                    ((removed_dirs++))
+                    ((removed_dirs++)) || true
                 fi
             fi
         done
