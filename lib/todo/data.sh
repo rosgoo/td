@@ -43,15 +43,17 @@ _slugify() {
 }
 
 _notes_folder_name() {
-    # Returns a human-readable folder name for use in a base directory.
-    # Uses just the slug, with a -2, -3 suffix if there's a collision.
+    # Returns a folder name matching the todo title (preserving spaces/case).
+    # Strips only filesystem-unsafe characters. Appends -2, -3 on collision.
     # Optional 3rd arg overrides the base directory (default: NOTES_DIR).
     local id="$1" title="$2" base_dir="${3:-$NOTES_DIR}"
-    local slug
-    slug=$(_slugify "$title")
-    [[ -z "$slug" ]] && slug="untitled"
+    # Strip characters unsafe for filenames: / \ : * ? " < > |
+    # Also trim leading/trailing whitespace and dots
+    local name
+    name=$(echo "$title" | sed 's/[\/\\:*?"<>|]//g' | sed 's/^[[:space:].]*//' | sed 's/[[:space:].]*$//')
+    [[ -z "$name" ]] && name="untitled"
 
-    local candidate="$slug"
+    local candidate="$name"
     local n=2
     while [[ -d "${base_dir}/${candidate}" ]]; do
         # Check if this folder belongs to the same todo (already correct)
@@ -61,7 +63,7 @@ _notes_folder_name() {
             existing_id=$(_read_todos | jq -r --arg np "${existing_plan}" '.[] | select(.notes_path == $np) | .id')
             [[ "$existing_id" == "$id" ]] && break
         fi
-        candidate="${slug}-${n}"
+        candidate="${name} ${n}"
         ((n++))
     done
     echo "$candidate"
