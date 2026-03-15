@@ -1182,6 +1182,95 @@ cmd_browse() {
 }
 
 # ---------------------------------------------------------------------------
+# td clean — Remove orphaned todos and notes directories
+# ---------------------------------------------------------------------------
+
+cmd_clean() {
+    local dry_run=false
+    [[ "${1:-}" == @(-n|--dry-run) ]] && dry_run=true
+
+    local removed_todos=0 removed_dirs=0
+
+    # 1) Find todos whose notes directory no longer exists on disk
+    local orphan_ids
+    orphan_ids=$(_read_todos | jq -r '.[] | select(.notes_path != null and .notes_path != "") | select(.notes_path | tostring | length > 0) | .id' )
+
+    for id in $orphan_ids; do
+        local todo notes_path title
+        todo=$(_get_todo "$id")
+        notes_path=$(echo "$todo" | jq -r '.notes_path // empty')
+        title=$(echo "$todo" | jq -r '.title')
+        [[ -z "$notes_path" ]] && continue
+
+        local notes_dir
+        notes_dir=$(dirname "$notes_path")
+        if [[ ! -d "$notes_dir" ]]; then
+            if $dry_run; then
+                echo -e "${DIM}Would remove todo:${RESET} ${BOLD}${title}${RESET} ${DIM}(${id})${RESET}"
+            else
+                # Recursively clean subtasks first
+                local subtask_ids
+                subtask_ids=$(_read_todos | jq -r --arg pid "$id" '[.[] | select(.parent_id == $pid) | .id] | .[]')
+                for sid in $subtask_ids; do
+                    local stodo stitle
+                    stodo=$(_get_todo "$sid")
+                    stitle=$(echo "$stodo" | jq -r '.title')
+                    local updated
+                    updated=$(_read_todos | jq --arg id "$sid" '[.[] | select(.id != $id)]')
+                    _write_todos "$updated"
+                    echo -e "${DIM}Removed orphaned subtask:${RESET} ${BOLD}${stitle}${RESET}"
+                    ((removed_todos++))
+                done
+                local updated
+                updated=$(_read_todos | jq --arg id "$id" '[.[] | select(.id != $id)]')
+                _write_todos "$updated"
+                echo -e "${DIM}Removed orphaned todo:${RESET} ${BOLD}${title}${RESET}"
+                ((removed_todos++))
+            fi
+        fi
+    done
+
+    # 2) Find notes directories that don't match any todo
+    if [[ -d "$NOTES_DIR" ]]; then
+        local all_notes_dirs
+        all_notes_dirs=$(_read_todos | jq -r '[.[] | .notes_path // "" | select(. != "") | split("/")[:-1] | join("/")] | unique | .[]')
+
+        for dir in "$NOTES_DIR"/*/; do
+            [[ ! -d "$dir" ]] && continue
+            dir="${dir%/}"  # strip trailing slash
+            local matched=false
+            while IFS= read -r np; do
+                [[ -z "$np" ]] && continue
+                if [[ "$np" == "$dir" || "$np" == "$dir"/* ]]; then
+                    matched=true
+                    break
+                fi
+            done <<< "$all_notes_dirs"
+
+            if ! $matched; then
+                local dirname
+                dirname=$(basename "$dir")
+                if $dry_run; then
+                    echo -e "${DIM}Would remove dir:${RESET}  ${BOLD}${dirname}/${RESET}"
+                else
+                    rm -rf "$dir"
+                    echo -e "${DIM}Removed orphaned dir:${RESET}  ${BOLD}${dirname}/${RESET}"
+                    ((removed_dirs++))
+                fi
+            fi
+        done
+    fi
+
+    if $dry_run; then
+        echo -e "\n${DIM}Dry run — no changes made. Run ${CYAN}td clean${DIM} to apply.${RESET}"
+    elif (( removed_todos == 0 && removed_dirs == 0 )); then
+        echo -e "${GREEN}${SYM_CHECK}${RESET} Nothing to clean"
+    else
+        echo -e "${GREEN}${SYM_CHECK}${RESET} Cleaned ${removed_todos} todo(s), ${removed_dirs} dir(s)"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # td find [query] — Search Claude sessions, create a todo, and resume
 # ---------------------------------------------------------------------------
 
@@ -1642,6 +1731,7 @@ cmd_help() {
     echo -e "  ${CYAN}td link${RESET} ${DIM}<id> <url|path>${RESET}        Link Linear/GitHub/plan"
     echo -e "  ${CYAN}td list${RESET}                         List active todos"
     echo -e "  ${CYAN}td archive${RESET}                      Show completed todos"
+    echo -e "  ${CYAN}td clean${RESET} ${DIM}[-n]${RESET}                    Remove orphaned todos & dirs"
     echo -e "  ${CYAN}td version${RESET}                      Print version"
     echo -e "  ${CYAN}td update${RESET}                       Update to latest version"
     echo ""
