@@ -9,15 +9,15 @@ Minimal task and session manager for agentic coding.
 
 ## Features
 
-- **Session persistence** — tracks Claude session IDs and working directories so you can resume exactly where you left off
+- **Session persistence** — Links Claude sessions and working directories to tasks so you can resume exactly where you left off and reduce context overload
 - **Plan-aware sessions** — each todo has a `plan.md` that gets injected into Claude's system prompt, so context carries across sessions automatically
-- **Fuzzy picker** — fzf-based interface to create, select, and act on todos without memorizing commands
-- **Git worktree isolation** — optionally spin up a dedicated worktree and branch per todo, keeping work separated
 - **Subtasks** — break todos into smaller pieces that inherit their parent's branch, worktree, and links
+- **`td do`** — create a todo and drop into a Claude session directly
+- **`/td` slash command** — manage todos from inside any Claude Code session
+- **Git worktree isolation** — optionally spin up a dedicated worktree and branch per todo, keeping work separated
+- `td try` lets you seamlessly test worktree code in your main by diffing all worktree changes and putting them on a test branch.
 - **Linear & GitHub linking** — attach tickets, PRs, and branches to todos; open them from the picker
 - **Pre-compact hook** — automatically snapshots conversation context into `plan.md` before Claude compacts, so notes are never lost
-- **`/td` slash command** — manage todos from inside any Claude Code session
-- **`td claude`** — create a todo and drop into a Claude session in one step
 - **Non-interactive CLI** — every action has an ID-addressable command, so Claude (or scripts) can manage todos without a UI
 - **Self-updating** — `td update` pulls the latest release
 
@@ -93,8 +93,8 @@ To configure the hook manually, add this to `~/.claude/settings.json`:
 ## Quick Start
 
 ```bash
-td claude "Fix the login bug"  # Create a todo and start Claude immediately
-td                              # Open the picker — select to start working
+td do "Fix the login bug"  # Create a todo and start Claude immediately
+td                              # Open the picker — select to resume the session
 td done                         # Mark it as done when finished
 ```
 
@@ -110,7 +110,7 @@ All commands accept an optional `[id]` (or ID prefix) to skip the interactive pi
 |---------|-------------|
 | `td` | Open the fzf picker (create or select a todo) |
 | `td new "title"` | Create a new todo |
-| `td claude "title"` | Create a todo and immediately open a Claude session |
+| `td do "title"` | Create a todo and immediately open a Claude session |
 | `td done [id]` | Mark a todo as done (optionally cleans up worktree/branch) |
 | `td rename [id] "title"` | Rename a todo |
 | `td delete [id]` | Delete a todo and all related data (notes, worktree, branch) |
@@ -158,26 +158,6 @@ Subtasks inherit their parent's branch, worktree, and Linear ticket. Metadata th
 | `td update` | Update to latest version |
 | `td version` | Print version |
 | `td help` | Show help |
-
-## Picker
-
-The fzf picker is the main interface. It shows all todos with their status, branch, worktree directory, and age.
-
-**Keybindings:**
-- `enter` — Select a todo (opens action menu)
-- `ctrl-d` — Toggle showing/hiding completed todos
-- `esc` — Quit
-
-When you select a todo, a menu offers:
-
-- **Resume/Start Claude session** — launches Claude with your notes injected as context
-- **Start Claude (new worktree)** — creates a git worktree with a dedicated branch
-- **Start Claude (current dir)** — starts a session in the current directory
-- **Try on main repo** — apply worktree changes to a test branch on the main repo
-- **Edit notes** — open notes in your editor
-- **Open Linear / Open GitHub** — open linked URLs in browser
-- **Split into subtask** — break work into smaller pieces
-- **Mark as done** — complete the todo
 
 ## Worktrees
 
