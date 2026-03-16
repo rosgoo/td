@@ -46,8 +46,11 @@ _open_notes() {
         # Get path relative to the vault root, strip .md suffix for Obsidian
         local rel_path="${target#$DATA_DIR/}"
         rel_path="${rel_path%.md}"
+        # Percent-encode the path (spaces, em-dashes, etc.) for the URI
+        local encoded_path
+        encoded_path=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$rel_path")
         # Use osascript to open the URI — avoids double-encoding from `open`
-        osascript -e "open location \"obsidian://open?vault=${vault_name}&file=${rel_path}\""
+        osascript -e "open location \"obsidian://open?vault=${vault_name}&file=${encoded_path}\""
     else
         $NOTES_EDITOR "$target"
     fi
