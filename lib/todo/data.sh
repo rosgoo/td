@@ -44,8 +44,19 @@ _check_gum() {
 # --- ID helpers -------------------------------------------------------------
 
 _generate_id() {
-    # Produces a unique ID like "1773329209-79908c" (epoch-random hex).
-    echo "$(date +%s)-$(openssl rand -hex 3)"
+    # Produces a slug ID from the title (e.g., "fix-document-audit").
+    # Handles collisions by appending -2, -3, etc.
+    local title="$1"
+    local slug
+    slug=$(_slugify "$title")
+    [[ -z "$slug" ]] && slug="untitled"
+    local candidate="$slug"
+    local n=2
+    while _read_todos | jq -e --arg id "$candidate" '.[] | select(.id == $id)' >/dev/null 2>&1; do
+        candidate="${slug}-${n}"
+        ((n++))
+    done
+    echo "$candidate"
 }
 
 _slugify() {

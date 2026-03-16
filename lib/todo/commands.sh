@@ -28,7 +28,7 @@ cmd_new() {
     fi
 
     local id notes_path
-    id=$(_generate_id)
+    id=$(_generate_id "$title")
     notes_path="${NOTES_DIR}/$(_notes_folder_name "$id" "$title")"
 
     # Create plan.md
@@ -64,14 +64,13 @@ EOF
         }]')
     _write_todos "$updated"
 
-    local short_id="${id##*-}"
     local group_label=""
     [[ "$group" == "backlog" ]] && group_label=" ${DIM}(backlog)${RESET}"
     if [[ -n "${TODO_QUIET:-}" ]]; then
         echo "$id"
     else
-        echo -e "${GREEN}${SYM_CHECK}${RESET} Created: ${BOLD}${title}${RESET}${group_label}  ${DIM}${short_id}${RESET}"
-        echo -e "  ${DIM}Next: td edit ${short_id}  ·  td link ${short_id}  ·  td split ${short_id}${RESET}"
+        echo -e "${GREEN}${SYM_CHECK}${RESET} Created: ${BOLD}${title}${RESET}${group_label}  ${DIM}${id}${RESET}"
+        echo -e "  ${DIM}Next: td edit ${id}  ·  td link ${id}  ·  td split ${id}${RESET}"
     fi
 }
 
@@ -98,7 +97,7 @@ cmd_do() {
     fi
 
     local id notes_path
-    id=$(_generate_id)
+    id=$(_generate_id "$title")
     notes_path="${NOTES_DIR}/$(_notes_folder_name "$id" "$title")"
 
     # Create plan.md
@@ -134,8 +133,7 @@ EOF
         }]')
     _write_todos "$updated"
 
-    local short_id="${id##*-}"
-    echo -e "${GREEN}${SYM_CHECK}${RESET} Created: ${BOLD}${title}${RESET}  ${DIM}${short_id}${RESET}"
+    echo -e "${GREEN}${SYM_CHECK}${RESET} Created: ${BOLD}${title}${RESET}  ${DIM}${id}${RESET}"
 
     # Launch Claude session in current directory
     _start_session "$id" "current-dir"
@@ -172,7 +170,7 @@ cmd_split() {
     fi
 
     local id notes_path parent_notes_dir
-    id=$(_generate_id)
+    id=$(_generate_id "$title")
 
     # Nest subtask notes inside parent's notes directory
     local parent_notes
@@ -348,8 +346,7 @@ cmd_list() {
         local items="$1" icon="$2"
         echo "$items" | jq -r --arg icon "$icon" '
             .[] |
-            (.id | split("-") | last) as $short_id |
-            "\n  \($icon) \u001b[1m\(.title)\u001b[0m  \u001b[2m\($short_id)\u001b[0m" +
+            "\n  \($icon) \u001b[1m\(.title)\u001b[0m  \u001b[2m\(.id)\u001b[0m" +
             (if (.linear_ticket // "") != "" then "\n    \u001b[0;35m\(.linear_ticket)\u001b[0m" else "" end) +
             (if (.branch // "") != "" then "  \u001b[0;36m\(.branch)\u001b[0m" else "" end) +
             (if (.github_pr // "") != "" then "  \u001b[0;36m\(.github_pr)\u001b[0m" else "" end) +
@@ -491,11 +488,10 @@ _bump_group() {
     local todo title
     todo=$(_get_todo "$id")
     title=$(echo "$todo" | jq -r '.title')
-    local short_id="${id##*-}"
     if [[ "$new_group" == "backlog" ]]; then
-        echo -e "${DIM}${SYM_DOT}${RESET} Moved to backlog: ${DIM}${title}${RESET}  ${DIM}${short_id}${RESET}"
+        echo -e "${DIM}${SYM_DOT}${RESET} Moved to backlog: ${DIM}${title}${RESET}  ${DIM}${id}${RESET}"
     else
-        echo -e "${GREEN}${SYM_DOT}${RESET} Moved to TODO: ${BOLD}${title}${RESET}  ${DIM}${short_id}${RESET}"
+        echo -e "${GREEN}${SYM_DOT}${RESET} Moved to TODO: ${BOLD}${title}${RESET}  ${DIM}${id}${RESET}"
     fi
 
     # Report subtasks that were also moved
@@ -1278,7 +1274,7 @@ _sync_create_from_dirs() {
             _sync_create_from_dirs "$dir" "dry-run-parent" "$dry_run"
         else
             local id now notes_path
-            id=$(_generate_id)
+            id=$(_generate_id "$title")
             now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
             notes_path="${dir}/plan.md"
 
@@ -1311,10 +1307,9 @@ EOF
             updated=$(_read_todos | jq --argjson todo "$new_todo" '. + [$todo]')
             _write_todos "$updated"
 
-            local short_id="${id##*-}"
             local label="${title}"
             [[ -n "$parent_id" ]] && label="  ↳ ${title}"
-            echo -e "${DIM}Created todo:${RESET} ${BOLD}${label}${RESET} ${DIM}(${short_id})${RESET}"
+            echo -e "${DIM}Created todo:${RESET} ${BOLD}${label}${RESET} ${DIM}(${id})${RESET}"
             ((created_todos++)) || true
 
             # Recurse into subdirectories for subtasks
@@ -1509,16 +1504,25 @@ cmd_find() {
     session_cwd=$(echo "$result" | cut -f2)
     session_branch=$(echo "$result" | cut -f3)
 
-    # Ask for a name
-    local title
-    title=$(_gum_input "Todo title for this session...") || exit 0
-    if [[ -z "$title" ]]; then
-        exit 0
-    fi
-
-    # Create the todo
+    # Choose: link to existing todo or create a new one
     local id
-    TODO_QUIET=1 id=$(cmd_new "$title")
+    local action
+    action=$(_action_menu "Link this session to…" \
+        "Existing todo" \
+        "New todo") || exit 0
+
+    if [[ "$action" == "Existing todo" ]]; then
+        id=$(_pick_todo "Select a todo to link this session to" "link ❯ ") || exit 0
+        local title
+        title=$(_read_todos | jq -r --arg id "$id" '.[] | select(.id == $id) | .title')
+    else
+        local title
+        title=$(_gum_input "Todo title for this session...") || exit 0
+        if [[ -z "$title" ]]; then
+            exit 0
+        fi
+        TODO_QUIET=1 id=$(cmd_new "$title")
+    fi
 
     # Link the session
     local updated
@@ -1530,8 +1534,11 @@ cmd_find() {
         else . end)')
     _write_todos "$updated"
 
-    local short_id="${id##*-}"
-    echo -e "${GREEN}${SYM_CHECK}${RESET} Created: ${BOLD}${title}${RESET}  ${DIM}${short_id}${RESET}"
+    if [[ "$action" == "Existing todo" ]]; then
+        echo -e "${GREEN}${SYM_CHECK}${RESET} Linked: ${BOLD}${title}${RESET}  ${DIM}${id}${RESET}"
+    else
+        echo -e "${GREEN}${SYM_CHECK}${RESET} Created: ${BOLD}${title}${RESET}  ${DIM}${id}${RESET}"
+    fi
     echo -e "  ${GREEN}${SYM_SESSION}${RESET} Session: ${DIM}${session_id}${RESET}"
     [[ -n "$session_branch" ]] && echo -e "  ${CYAN}${SYM_BRANCH}${RESET} Branch: ${session_branch}"
 

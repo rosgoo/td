@@ -25,7 +25,8 @@ td find <query>             # Search todos by title
 
 ## Guidelines
 
-- IDs can be shortened to a unique prefix (e.g., `td done 177` instead of the full ID)
+- Run `td list` to discover todo IDs — IDs are human-readable slugs (e.g., `fix-document-audit`)
+- IDs can be shortened to a unique prefix (e.g., `td done fix-doc` instead of the full ID)
 - When the user asks to create, complete, or manage tasks, use `td` commands
 - Use `td note` to record important decisions or context on the current todo
 - Use `td link` to attach relevant URLs (PRs, tickets, branches) to todos
