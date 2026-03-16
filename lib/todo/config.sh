@@ -43,11 +43,11 @@ _open_notes() {
     if [[ "$NOTES_EDITOR" == "obsidian" ]]; then
         local vault_name
         vault_name=$(basename "$DATA_DIR")
-        # Get path relative to the vault root
+        # Get path relative to the vault root, strip .md suffix for Obsidian
         local rel_path="${target#$DATA_DIR/}"
-        # URL-encode spaces
-        rel_path="${rel_path// /%20}"
-        open "obsidian://open?vault=${vault_name}&file=${rel_path}"
+        rel_path="${rel_path%.md}"
+        # Use osascript to open the URI — avoids double-encoding from `open`
+        osascript -e "open location \"obsidian://open?vault=${vault_name}&file=${rel_path}\""
     else
         $NOTES_EDITOR "$target"
     fi

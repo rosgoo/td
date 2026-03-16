@@ -1029,8 +1029,9 @@ _select_todo() {
         options+=("Move to backlog")
     fi
     options+=("Add subtask")
-    options+=("Edit plan")
-    [[ -n "$ticket" || -n "$github_pr" || -n "$branch" ]] && options+=("Open")
+    options+=("Open plan")
+    [[ -n "$ticket" ]] && options+=("Linear")
+    [[ -n "$github_pr" || -n "$branch" ]] && options+=("GitHub")
     options+=("Link" "Back")
 
     local choice
@@ -1060,27 +1061,26 @@ _select_todo() {
         "Add subtask")
             cmd_split "$id"
             ;;
-        "Edit plan")
+        "Open plan")
             _open_notes "$notes_path"
             ;;
-        "Open")
-            local open_urls=()
-            if [[ -n "$ticket" ]]; then
-                local ticket_url
-                ticket_url=$(_linear_ticket_url "$ticket")
-                open_urls+=("$ticket_url")
-            fi
+        "Linear")
+            local ticket_url
+            ticket_url=$(_linear_ticket_url "$ticket")
+            echo -e "${DIM}Opening ${ticket_url}${RESET}"
+            _open_url "$ticket_url"
+            ;;
+        "GitHub")
+            local gh_url
             if [[ -n "$github_pr" ]]; then
-                open_urls+=("$github_pr")
-            elif [[ -n "$branch" ]]; then
-                local branch_url
-                branch_url=$(_github_branch_url "$branch")
-                [[ -n "$branch_url" ]] && open_urls+=("$branch_url")
+                gh_url="$github_pr"
+            else
+                gh_url=$(_github_branch_url "$branch")
             fi
-            for url in "${open_urls[@]}"; do
-                echo -e "${DIM}Opening ${url}${RESET}"
-                _open_url "$url"
-            done
+            if [[ -n "$gh_url" ]]; then
+                echo -e "${DIM}Opening ${gh_url}${RESET}"
+                _open_url "$gh_url"
+            fi
             ;;
         "Link")
             cmd_link "$id"
