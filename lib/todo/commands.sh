@@ -1055,8 +1055,12 @@ _select_todo() {
         "Linear")
             local ticket_url
             ticket_url=$(_linear_ticket_url "$ticket")
-            echo -e "${DIM}Opening ${ticket_url}${RESET}"
-            _open_url "$ticket_url"
+            if [[ -n "$ticket_url" ]]; then
+                echo -e "${DIM}Opening ${ticket_url}${RESET}"
+                _open_url "$ticket_url"
+            else
+                echo -e "${RED}Error:${RESET} Cannot build Linear URL. Set linear_org in settings." >&2
+            fi
             ;;
         "GitHub")
             local gh_url
