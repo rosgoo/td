@@ -33,3 +33,4 @@ td find <query>             # Search todos by title
 - Use `td get <id>` to inspect a todo's full details (branch, worktree, links, etc.)
 - Read a todo's `plan.md` (via `td show <id>`) to understand its full context
 - Use `td split` to break large todos into subtasks when the user's work has distinct parts
+- When updating a todo's `plan.md`, always use the full absolute path (e.g., `/Users/ryan/td/todo/.../plan.md`), not `~/td/...` — the Write tool does not expand `~`
