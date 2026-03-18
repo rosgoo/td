@@ -320,16 +320,46 @@ _start_session() {
         real_cwd="$(realpath "$(pwd)" 2>/dev/null)"
         real_scwd="$(realpath "$session_cwd" 2>/dev/null)"
         if [[ "$real_cwd" != "$real_scwd" ]]; then
-            if _gum_confirm "Session was started in ${session_cwd}. Switch directory?"; then
-                cd "$session_cwd"
-            else
-                echo -e "${YELLOW}Warning:${RESET} Cannot resume session from a different directory."
-                if _gum_confirm "Start a new session here instead?"; then
+            local dir_choice
+            dir_choice=$(_gum_choose "Session was started in ${session_cwd}" \
+                "Switch to original directory" \
+                "Move session here" \
+                "Start a new session here" \
+                "Cancel") || return 0
+            case "$dir_choice" in
+                "Switch"*)
+                    cd "$session_cwd"
+                    ;;
+                "Move"*)
+                    # Move the session .jsonl file to the current directory's project folder
+                    local old_encoded new_encoded old_project_dir new_project_dir
+                    old_encoded=$(echo "$session_cwd" | sed 's|/|-|g')
+                    new_encoded=$(pwd | sed 's|/|-|g')
+                    old_project_dir="$HOME/.claude/projects/${old_encoded}"
+                    new_project_dir="$HOME/.claude/projects/${new_encoded}"
+                    if [[ -f "${old_project_dir}/${session_id}.jsonl" ]]; then
+                        mkdir -p "$new_project_dir"
+                        mv "${old_project_dir}/${session_id}.jsonl" "${new_project_dir}/${session_id}.jsonl"
+                        echo -e "${GREEN}${SYM_CHECK}${RESET} Moved session to current directory."
+                    else
+                        echo -e "${YELLOW}Warning:${RESET} Session file not found at original location. Will resume anyway."
+                    fi
+                    # Update session_cwd in the todo record
+                    local new_cwd
+                    new_cwd=$(pwd)
+                    local updated
+                    updated=$(_read_todos | jq --arg id "$id" --arg cwd "$new_cwd" \
+                        'map(if .id == $id then .session_cwd = $cwd else . end)')
+                    _write_todos "$updated"
+                    ;;
+                "Start"*)
                     _launch_claude "$id" ""
                     return
-                fi
-                return 0
-            fi
+                    ;;
+                *)
+                    return 0
+                    ;;
+            esac
         fi
         _launch_claude "$id" "$session_id"
         return

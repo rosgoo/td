@@ -823,24 +823,65 @@ cmd_link() {
             ;;
         "Claude"*)
             [[ -n "$current_session" ]] && echo -e "${DIM}Current: ${current_session}${RESET}"
-            local new_session
-            new_session=$(_gum_input "Claude session UUID") || return 0
+            local session_how
+            session_how=$(_gum_choose "How?" "Find session" "Enter session UUID") || return 0
+            local new_session="" link_cwd="" link_branch=""
+            case "$session_how" in
+                "Find"*)
+                    _check_fzf
+                    echo -e "${DIM}Scanning sessions…${RESET}" >&2
+                    local fzf_lines
+                    fzf_lines=$(_build_session_lines "")
+                    if [[ -z "$fzf_lines" ]]; then
+                        echo -e "${YELLOW}No unlinked sessions found.${RESET}" >&2
+                        return 0
+                    fi
+                    local result
+                    result=$(echo -e "$fzf_lines" | fzf \
+                        --header "Select a session to link (ESC to cancel)" \
+                        --layout=reverse \
+                        --height=80% \
+                        --with-nth=4.. \
+                        --delimiter=$'\t' \
+                        --header-first \
+                        --border \
+                        --ansi \
+                        --no-multi \
+                        --no-sort \
+                        --prompt="find ❯ " \
+                        --preview-window=hidden \
+                    ) || return 0
+                    [[ -z "$result" ]] && return 0
+                    new_session=$(echo "$result" | cut -f1)
+                    link_cwd=$(echo "$result" | cut -f2)
+                    link_branch=$(echo "$result" | cut -f3)
+                    ;;
+                "Enter"*)
+                    new_session=$(_gum_input "Claude session UUID") || return 0
+                    [[ -z "$new_session" ]] && return 0
+                    # Discover the real cwd from the Claude session file
+                    local session_file
+                    session_file=$(find "$HOME/.claude/projects" -name "${new_session}.jsonl" 2>/dev/null | head -1)
+                    if [[ -n "$session_file" ]]; then
+                        link_cwd=$(head -5 "$session_file" | jq -r 'select(.cwd) | .cwd' | head -1)
+                    fi
+                    ;;
+                *) return 0 ;;
+            esac
             [[ -z "$new_session" ]] && return 0
-            # Discover the real cwd from the Claude session file
-            local link_cwd=""
-            local session_file
-            session_file=$(find "$HOME/.claude/projects" -name "${new_session}.jsonl" 2>/dev/null | head -1)
-            if [[ -n "$session_file" ]]; then
-                link_cwd=$(head -5 "$session_file" | jq -r 'select(.cwd) | .cwd' | head -1)
-            fi
             if [[ -z "$link_cwd" ]]; then
                 link_cwd="$(pwd)"
             fi
             local updated
-            updated=$(_read_todos | jq --arg id "$selected_id" --arg sid "$new_session" --arg cwd "$link_cwd" \
-                'map(if .id == $id then .session_id = $sid | .session_cwd = $cwd else . end)')
+            updated=$(_read_todos | jq --arg id "$selected_id" --arg sid "$new_session" --arg cwd "$link_cwd" --arg branch "$link_branch" \
+                'map(if .id == $id then
+                    .session_id = $sid |
+                    .session_cwd = $cwd |
+                    (if $branch != "" then .branch = $branch else . end)
+                else . end)')
             _write_todos "$updated"
             echo -e "${GREEN}${SYM_CHECK}${RESET} Linked: ${BOLD}${title}${RESET} ${SYM_ARROW} ${GREEN}${SYM_SESSION} ${new_session}${RESET}"
+            [[ -n "$link_branch" ]] && echo -e "  ${CYAN}${SYM_BRANCH}${RESET} Branch: ${link_branch}"
             ;;
         "Plan"*)
             [[ -n "$current_notes" ]] && echo -e "${DIM}Current: ${current_notes}${RESET}"
