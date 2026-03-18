@@ -46,9 +46,8 @@ class TestVersion:
 class TestHelp:
     def test_shows_help(self, td):
         r = td("help")
-        assert "Minimal task manager" in r.stderr
-        assert "td new" in r.stderr
-        assert "Config" in r.stderr
+        assert "Minimal task manager" in r.stdout
+        assert "Non-interactive" in r.stdout
 
 
 class TestNew:
@@ -93,11 +92,11 @@ class TestGet:
 
     def test_no_id_error(self, td):
         r = td("get")
-        assert r.returncode == 1
+        assert r.returncode != 0
 
     def test_bad_id_error(self, td):
         r = td("get", "nonexistent-id-xyz")
-        assert r.returncode == 1
+        assert r.returncode != 0
 
 
 class TestNote:

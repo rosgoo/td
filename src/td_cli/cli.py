@@ -2,6 +2,7 @@
 
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -9,12 +10,18 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
+# Help panel names for command grouping
+_INTERACTIVE = "Interactive"
+_NON_INTERACTIVE = "Non-interactive (AI-friendly)"
+_ADMIN = "Admin"
+
 app = typer.Typer(
     name="td",
-    help="Minimal task manager for Claude Code",
+    help="Minimal task manager for Claude Code.\n\nHandles plan injections, Claude sessions and worktree management.",
     add_completion=False,
     no_args_is_help=False,
     invoke_without_command=True,
+    rich_markup_mode="rich",
 )
 
 stderr = Console(stderr=True)
@@ -34,15 +41,23 @@ def _version_str() -> str:
 # ---------------------------------------------------------------------------
 
 @app.callback()
-def main(ctx: typer.Context) -> None:
+def main(
+    ctx: typer.Context,
+    quiet: bool = typer.Option(False, "-q", "--quiet", envvar="TODO_QUIET", help="Suppress info output, print only IDs."),
+    no_color: bool = typer.Option(False, "--no-color", envvar="NO_COLOR", help="Disable colored output."),
+) -> None:
     """td — Minimal task manager for Claude Code."""
+    if quiet:
+        os.environ["TODO_QUIET"] = "1"
+    if no_color:
+        os.environ["NO_COLOR"] = "1"
     from td_cli.data import ensure_setup
     ensure_setup()
     if ctx.invoked_subcommand is None:
         _picker()
 
 
-@app.command()
+@app.command(rich_help_panel=_ADMIN)
 def version() -> None:
     """Print version."""
     typer.echo(f"td {_version_str()}")
@@ -52,7 +67,7 @@ def version() -> None:
 # td new [-b] "title"
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_NON_INTERACTIVE)
 def new(
     title: str = typer.Argument(None),
     backlog: bool = typer.Option(False, "-b", "--backlog"),
@@ -67,7 +82,7 @@ def new(
     if not title:
         title = prompt_input("Todo title...")
         if not title:
-            raise typer.Exit()
+            raise typer.Abort()
 
     group = "backlog" if backlog else "todo"
     todo_id = generate_id(title)
@@ -106,7 +121,7 @@ def new(
 # td do [-n "title"]
 # ---------------------------------------------------------------------------
 
-@app.command("do")
+@app.command("do", rich_help_panel=_INTERACTIVE)
 def do_cmd(
     title: str = typer.Argument(None),
 ) -> None:
@@ -122,7 +137,7 @@ def do_cmd(
     if not title:
         title = prompt_input("What are you working on?", default=random_name())
         if not title:
-            raise typer.Exit()
+            raise typer.Abort()
 
     todo_id = generate_id(title)
     notes_path = NOTES_DIR / notes_folder_name(todo_id, title)
@@ -149,7 +164,7 @@ def do_cmd(
 # td split [parent-id] ["title"]
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_NON_INTERACTIVE)
 def split(
     parent_id: str = typer.Argument(None),
     title: str = typer.Argument(None),
@@ -165,7 +180,7 @@ def split(
     if not parent_id:
         parent_id = pick_todo("Select parent todo", "add ❯ ")
         if not parent_id:
-            raise typer.Exit()
+            raise typer.Abort()
     else:
         parent_id = resolve_id(parent_id)
 
@@ -181,7 +196,7 @@ def split(
         stderr.print(f"[dim]Adding subtask to: {parent_title}[/]")
         title = prompt_input("Subtask title...")
         if not title:
-            raise typer.Exit()
+            raise typer.Abort()
 
     todo_id = generate_id(title)
     parent_notes = parent.get("notes_path", "")
@@ -221,7 +236,6 @@ def _archive_todo(todo_id: str) -> None:
     """Mark a todo and its descendants as done, with optional cleanup."""
     from td_cli.config import REPO_ROOT
     from td_cli.data import get_todo, read_todos, write_todos
-    from td_cli.ui import prompt_confirm
 
     todo = get_todo(todo_id)
     if not todo:
@@ -254,7 +268,7 @@ def _archive_todo(todo_id: str) -> None:
 
     # Offer cleanup
     if wt_path or branch:
-        if prompt_confirm("Remove worktree and branch?"):
+        if typer.confirm("Remove worktree and branch?", default=False):
             repo = REPO_ROOT
             if repo:
                 if wt_path and os.path.isdir(wt_path):
@@ -263,20 +277,18 @@ def _archive_todo(todo_id: str) -> None:
                         capture_output=True,
                     )
                     stderr.print("[dim]Removed worktree[/]")
-                if branch:
-                    import subprocess
-                    if subprocess.run(
-                        ["git", "-C", repo, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+                if branch and subprocess.run(
+                    ["git", "-C", repo, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+                    capture_output=True,
+                ).returncode == 0:
+                    subprocess.run(
+                        ["git", "-C", repo, "branch", "-D", branch],
                         capture_output=True,
-                    ).returncode == 0:
-                        subprocess.run(
-                            ["git", "-C", repo, "branch", "-D", branch],
-                            capture_output=True,
-                        )
-                        stderr.print(f"[dim]Deleted branch {branch}[/]")
+                    )
+                    stderr.print(f"[dim]Deleted branch {branch}[/]")
 
 
-@app.command()
+@app.command(rich_help_panel=_NON_INTERACTIVE)
 def done(todo_id: str = typer.Argument(None)) -> None:
     """Mark a todo as done."""
     from td_cli.data import resolve_id
@@ -287,7 +299,7 @@ def done(todo_id: str = typer.Argument(None)) -> None:
     else:
         todo_id = pick_todo("Select todo to mark as done", "done ❯ ")
         if not todo_id:
-            raise typer.Exit()
+            raise typer.Abort()
     _archive_todo(todo_id)
 
 
@@ -295,7 +307,7 @@ def done(todo_id: str = typer.Argument(None)) -> None:
 # td edit [id]
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_INTERACTIVE)
 def edit(todo_id: str = typer.Argument(None)) -> None:
     """Open plan.md in editor."""
     from td_cli.config import open_notes
@@ -307,7 +319,7 @@ def edit(todo_id: str = typer.Argument(None)) -> None:
     else:
         todo_id = pick_todo("Select todo to edit plan", "edit ❯ ")
         if not todo_id:
-            raise typer.Exit()
+            raise typer.Abort()
 
     todo = get_todo(todo_id)
     if not todo:
@@ -322,7 +334,7 @@ def edit(todo_id: str = typer.Argument(None)) -> None:
 # td list [--json]
 # ---------------------------------------------------------------------------
 
-@app.command("list")
+@app.command("list", rich_help_panel=_NON_INTERACTIVE)
 def list_cmd(json_mode: bool = typer.Option(False, "--json")) -> None:
     """List active todos."""
     from td_cli.data import active_todos
@@ -372,7 +384,7 @@ def list_cmd(json_mode: bool = typer.Option(False, "--json")) -> None:
 # td archive
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_NON_INTERACTIVE)
 def archive() -> None:
     """Show completed todos."""
     from td_cli.data import done_todos
@@ -400,14 +412,13 @@ def archive() -> None:
 # td get <id>
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_NON_INTERACTIVE)
 def get(todo_id: str = typer.Argument(None)) -> None:
     """Print todo as JSON."""
     from td_cli.data import resolve_id, get_todo
 
     if not todo_id:
-        stderr.print("[red]Usage:[/] td get <id>")
-        raise typer.Exit(1)
+        raise typer.BadParameter("td get requires an ID")
     todo_id = resolve_id(todo_id)
     todo = get_todo(todo_id)
     typer.echo(json.dumps(todo, indent=2))
@@ -417,7 +428,7 @@ def get(todo_id: str = typer.Argument(None)) -> None:
 # td note <id> "text"
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_NON_INTERACTIVE)
 def note(todo_id: str, text: str) -> None:
     """Append text to a todo's plan.md."""
     from td_cli.data import resolve_id, get_todo, ensure_notes
@@ -438,7 +449,7 @@ def note(todo_id: str, text: str) -> None:
 # td show [id]
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_NON_INTERACTIVE)
 def show(todo_id: str = typer.Argument(None)) -> None:
     """Print the plan.md path for a todo."""
     from td_cli.data import resolve_id, get_todo, ensure_notes
@@ -449,7 +460,7 @@ def show(todo_id: str = typer.Argument(None)) -> None:
     else:
         todo_id = pick_todo("Select todo", "show ❯ ")
         if not todo_id:
-            raise typer.Exit()
+            raise typer.Abort()
     todo = get_todo(todo_id)
     if not todo:
         raise typer.Exit(1)
@@ -492,7 +503,7 @@ def _bump_group(todo_id: str, new_group: str) -> None:
             stderr.print(f"  [dim]· {t['title']}[/]")
 
 
-@app.command()
+@app.command(rich_help_panel=_NON_INTERACTIVE)
 def bump(todo_id: str = typer.Argument(None)) -> None:
     """Toggle a todo between TODO and backlog."""
     from td_cli.data import resolve_id, get_todo
@@ -501,7 +512,7 @@ def bump(todo_id: str = typer.Argument(None)) -> None:
     if not todo_id:
         todo_id = pick_todo("Select todo to bump", "bump ❯ ")
         if not todo_id:
-            raise typer.Exit()
+            raise typer.Abort()
     else:
         todo_id = resolve_id(todo_id)
 
@@ -516,7 +527,7 @@ def bump(todo_id: str = typer.Argument(None)) -> None:
 # td rename [id] ["new title"]
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_NON_INTERACTIVE)
 def rename(todo_id: str = typer.Argument(None), new_title: str = typer.Argument(None)) -> None:
     """Rename a todo."""
     from td_cli.config import NOTES_DIR
@@ -526,7 +537,7 @@ def rename(todo_id: str = typer.Argument(None), new_title: str = typer.Argument(
     if not todo_id:
         todo_id = pick_todo("Select todo to rename", "rename ❯ ")
         if not todo_id:
-            raise typer.Exit()
+            raise typer.Abort()
     else:
         todo_id = resolve_id(todo_id)
 
@@ -538,7 +549,7 @@ def rename(todo_id: str = typer.Argument(None), new_title: str = typer.Argument(
     if not new_title:
         new_title = prompt_input("New title", default=old_title)
         if not new_title:
-            raise typer.Exit()
+            raise typer.Abort()
 
     # Rename notes folder
     old_notes_path = todo.get("notes_path", "")
@@ -565,18 +576,17 @@ def rename(todo_id: str = typer.Argument(None), new_title: str = typer.Argument(
 # td delete [id] [--force]
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_NON_INTERACTIVE)
 def delete(todo_id: str = typer.Argument(None), force: bool = typer.Option(False, "--force")) -> None:
     """Delete a todo and all related data."""
-    import subprocess
     from td_cli.config import NOTES_DIR, REPO_ROOT
     from td_cli.data import resolve_id, get_todo, read_todos, write_todos
-    from td_cli.ui import pick_todo, prompt_confirm
+    from td_cli.ui import pick_todo
 
     if not todo_id:
         todo_id = pick_todo("Select todo to delete", "delete ❯ ")
         if not todo_id:
-            raise typer.Exit()
+            raise typer.Abort()
     else:
         todo_id = resolve_id(todo_id)
 
@@ -596,8 +606,7 @@ def delete(todo_id: str = typer.Argument(None), force: bool = typer.Option(False
             stderr.print(f"  [dim]Will delete branch: {branch}[/]")
         if notes_path:
             stderr.print(f"  [dim]Will delete plan: {notes_path}[/]")
-        if not prompt_confirm("Delete this todo and all related data?"):
-            raise typer.Exit()
+        typer.confirm("Delete this todo and all related data?", abort=True)
 
     repo = REPO_ROOT
     if wt_path and os.path.isdir(wt_path) and repo:
@@ -640,7 +649,7 @@ def delete(todo_id: str = typer.Argument(None), force: bool = typer.Option(False
 # td link [id] [url|path]
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_NON_INTERACTIVE)
 def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> None:
     """Link a Linear ticket, branch, PR, or plan file."""
     from td_cli.data import resolve_id, get_todo, read_todos, write_todos
@@ -661,13 +670,13 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
         else:
             try:
                 selected_id = resolve_id(arg1)
-            except SystemExit:
+            except (SystemExit, typer.BadParameter):
                 url = arg1
 
     if not selected_id:
         selected_id = pick_todo("Select todo to link", "link ❯ ")
         if not selected_id:
-            raise typer.Exit()
+            raise typer.Abort()
 
     todo = get_todo(selected_id)
     if not todo:
@@ -718,13 +727,13 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
         "Linear ticket", "Git branch", "GitHub PR", "Claude session", "Plan file",
     )
     if not choice:
-        raise typer.Exit()
+        raise typer.Abort()
 
     todos = read_todos()
     if choice == "Linear ticket":
         raw = prompt_input("Linear URL or ticket ID (e.g. CORE-12207)")
         if not raw:
-            raise typer.Exit()
+            raise typer.Abort()
         ticket_id = extract_linear_ticket(raw)
         for t in todos:
             if t["id"] == selected_id:
@@ -748,7 +757,7 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
 # td open [id]
 # ---------------------------------------------------------------------------
 
-@app.command("open")
+@app.command("open", rich_help_panel=_INTERACTIVE)
 def open_cmd(todo_id: str = typer.Argument(None)) -> None:
     """Open action menu for a todo."""
     from td_cli.data import resolve_id
@@ -757,7 +766,7 @@ def open_cmd(todo_id: str = typer.Argument(None)) -> None:
     if not todo_id:
         todo_id = pick_todo("Select todo", "open ❯ ")
         if not todo_id:
-            raise typer.Exit()
+            raise typer.Abort()
     else:
         todo_id = resolve_id(todo_id)
     _select_todo(todo_id)
@@ -767,7 +776,7 @@ def open_cmd(todo_id: str = typer.Argument(None)) -> None:
 # td try [id]
 # ---------------------------------------------------------------------------
 
-@app.command("try")
+@app.command("try", rich_help_panel=_NON_INTERACTIVE)
 def try_cmd(todo_id: str = typer.Argument(None)) -> None:
     """Apply worktree diff to a try branch on main repo."""
     from td_cli.data import resolve_id
@@ -779,7 +788,7 @@ def try_cmd(todo_id: str = typer.Argument(None)) -> None:
     else:
         todo_id = pick_todo("Select todo to try", "try ❯ ")
         if not todo_id:
-            raise typer.Exit()
+            raise typer.Abort()
     try_worktree(todo_id)
 
 
@@ -787,7 +796,7 @@ def try_cmd(todo_id: str = typer.Argument(None)) -> None:
 # td browse
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_INTERACTIVE)
 def browse() -> None:
     """Open notes directory in editor."""
     from td_cli.config import NOTES_DIR, open_notes
@@ -798,7 +807,7 @@ def browse() -> None:
 # td sync [-n]
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_NON_INTERACTIVE)
 def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
     """Two-way sync: create/remove todos and dirs."""
     from td_cli.config import NOTES_DIR
@@ -911,7 +920,7 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
 # td find [query]
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_INTERACTIVE)
 def find(query: str = typer.Argument("")) -> None:
     """Search Claude sessions, create a todo, and resume."""
     from td_cli.session import start_session
@@ -935,7 +944,7 @@ def find(query: str = typer.Argument("")) -> None:
         input=lines, capture_output=True, text=True,
     )
     if result.returncode != 0 or not result.stdout.strip():
-        raise typer.Exit()
+        raise typer.Abort()
 
     parts = result.stdout.strip().split("\t")
     session_id = parts[0]
@@ -944,17 +953,17 @@ def find(query: str = typer.Argument("")) -> None:
 
     action = action_menu("Link this session to…", "Existing todo", "New todo")
     if not action:
-        raise typer.Exit()
+        raise typer.Abort()
 
     from td_cli.data import read_todos, write_todos
     if action == "Existing todo":
         tid = pick_todo("Select a todo to link this session to", "link ❯ ")
         if not tid:
-            raise typer.Exit()
+            raise typer.Abort()
     else:
         title = prompt_input("Todo title for this session...")
         if not title:
-            raise typer.Exit()
+            raise typer.Abort()
         import os
         old_quiet = os.environ.get("TODO_QUIET", "")
         os.environ["TODO_QUIET"] = "1"
@@ -1076,7 +1085,7 @@ def _build_session_lines(query: str = "") -> str:
 # td settings
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_ADMIN)
 def settings() -> None:
     """Print the settings file."""
     from td_cli.config import SETTINGS_PATH
@@ -1095,7 +1104,7 @@ def settings() -> None:
 # td init
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_ADMIN)
 def init() -> None:
     """Configure td settings interactively."""
     from td_cli.config import SETTINGS_PATH
@@ -1156,7 +1165,7 @@ def init() -> None:
 # td update
 # ---------------------------------------------------------------------------
 
-@app.command()
+@app.command(rich_help_panel=_ADMIN)
 def update() -> None:
     """Update td to the latest version."""
     self_path = Path(__file__).resolve()
@@ -1193,59 +1202,15 @@ def update() -> None:
 
 
 # ---------------------------------------------------------------------------
-# td help
+# td help — delegates to --help
 # ---------------------------------------------------------------------------
 
-@app.command("help")
-def help_cmd() -> None:
+@app.command("help", rich_help_panel=_ADMIN)
+def help_cmd(ctx: typer.Context) -> None:
     """Show usage."""
-    v = _version_str()
-    stderr.print(f"""
-[cyan]  ▄▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄   ▄▄▄▄▄[/]
-[cyan]    █    █   █ █    █ █   █[/]
-[cyan]    █    █   █ █    █ █   █[/]
-[cyan]    █    █▄▄▄█ █▄▄▄▀  █▄▄▄█[/]
-
-  [dim]Minimal task manager for Claude Code[/]  [dim]v{v}[/]
-  [dim]Handles plan injections, Claude sessions and worktree management.[/]
-  [dim]All commands work non-interactively for AI agents.[/]
-
-  [dim]{'─' * 54}[/]
-
-  [bold]Interactive[/]
-
-  [cyan]td[/]                              Open interactive app
-  [cyan]td do[/] [dim]"title"[/]                  Create todo & start Claude immediately
-  [cyan]td find[/] [dim][query][/]                 Find Claude session → create todo & resume
-  [cyan]td edit[/] [dim][id][/]                    Open plan in editor
-  [cyan]td link[/] [dim][id][/]                   Link Linear/GitHub/plan
-  [cyan]td open[/] [dim][id][/]                    Open action menu for a todo
-  [cyan]td browse[/]                       Open notes dir in editor
-
-  [bold]Non-interactive[/] [dim](AI-friendly)[/]
-
-  [cyan]td new[/] [dim][-b] "title"[/]              Create a new todo (-b for backlog)
-  [cyan]td done[/] [dim]<id>[/]                    Mark as done
-  [cyan]td try[/] [dim][id][/]                     Apply worktree diff to try branch
-  [cyan]td bump[/] [dim][id][/]                    Toggle between TODO and backlog
-  [cyan]td rename[/] [dim]<id> "title"[/]          Rename a todo
-  [cyan]td delete[/] [dim]<id> [--force][/]       Delete todo and all data
-  [cyan]td note[/] [dim]<id> "text"[/]             Append to plan
-  [cyan]td get[/] [dim]<id>[/]                     Print todo as JSON
-  [cyan]td show[/] [dim]<id>[/]                    Print plan path
-  [cyan]td split[/] [dim]<id> "title"[/]           Create subtask
-  [cyan]td link[/] [dim]<id> <url|path>[/]        Link Linear/GitHub/plan
-  [cyan]td list[/]                         List active todos
-  [cyan]td archive[/]                      Show completed todos
-  [cyan]td sync[/] [dim][-n][/]                     Two-way sync: create/remove todos & dirs
-  [cyan]td version[/]                      Print version
-  [cyan]td update[/]                       Update to latest version
-
-  [dim]{'─' * 54}[/]
-
-  [bold]Config[/]  [dim]~/.config/claude-todo/settings.json[/]
-  [bold]Data[/]    [dim]~/td/[/]
-""")
+    # Delegate to typer's auto-generated --help
+    ctx.parent.info_name = "td"  # type: ignore[union-attr]
+    typer.echo(ctx.parent.get_help())  # type: ignore[union-attr]
 
 
 # ---------------------------------------------------------------------------

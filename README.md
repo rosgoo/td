@@ -36,11 +36,13 @@ Inside a Claude session, use the `/td` slash command to manage todos without lea
 
 ## Installation
 
+Requires **Python 3.10+** and **fzf**.
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rosgoo/td/main/install-remote.sh | bash
 ```
 
-This downloads the latest release, installs dependencies via Homebrew, and sets up the Claude Code hook and `/td` slash command. Make sure `~/.local/bin` is in your `PATH`:
+This downloads the latest release, installs the Python package (via pipx, pip, or a managed venv), and sets up the Claude Code hook and `/td` slash command. Make sure `~/.local/bin` is in your `PATH`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -54,10 +56,11 @@ td update
 
 ### Other install methods
 
-**Homebrew:**
+**pip / pipx:**
 
 ```bash
-brew install rosgoo/tap/td
+pipx install td-cli    # isolated install (recommended)
+pip install td-cli     # or pip
 ```
 
 **From source (for development):**
@@ -65,8 +68,10 @@ brew install rosgoo/tap/td
 ```bash
 git clone https://github.com/rosgoo/td.git
 cd td
-./install.sh
+./dev-install.sh    # creates .venv, installs editable, sets up td + td-prod
 ```
+
+This gives you `td` pointing to the Python dev version (editable — changes to `src/` take effect immediately) and `td-prod` pointing to the bash production version.
 
 ### Hook configuration
 
@@ -127,10 +132,11 @@ This uses the `cursor` CLI command, which Cursor installs via **Cursor > Install
 
 | Tool | Purpose |
 |------|---------|
-| [jq](https://github.com/stedolan/jq) | JSON processing |
+| [Python 3.10+](https://python.org) | Runtime |
 | [fzf](https://github.com/junegunn/fzf) | Fuzzy picker |
-| [gum](https://github.com/charmbracelet/gum) | Interactive prompts |
 | [Claude Code](https://claude.ai/code) | AI coding sessions |
+
+Python packages (installed automatically): [typer](https://typer.tiangolo.com), [rich](https://rich.readthedocs.io).
 
 ---
 

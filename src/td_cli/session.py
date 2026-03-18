@@ -9,7 +9,9 @@ from td_cli.data import (
     get_todo, read_todos, write_todos, slugify,
 )
 from td_cli.git import require_repo, worktree_dir, validate_worktree
-from td_cli.ui import prompt_confirm, prompt_choose
+import typer
+
+from td_cli.ui import prompt_choose
 
 
 # --- Worktree creation ------------------------------------------------------
@@ -172,7 +174,7 @@ def try_worktree(todo_id: str) -> None:
         ["git", "-C", repo, "show-ref", "--verify", "--quiet", f"refs/heads/{try_branch}"],
         capture_output=True,
     ).returncode == 0:
-        if not prompt_confirm(f"Branch '{try_branch}' already exists. Replace it?"):
+        if not typer.confirm(f"Branch '{try_branch}' already exists. Replace it?", default=False):
             return
         current = subprocess.run(
             ["git", "-C", repo, "branch", "--show-current"],
@@ -397,7 +399,7 @@ def start_session(todo_id: str, mode: str = "") -> None:
     # Case 3: Worktree exists
     if not validate_worktree(wt_path):
         console.print(f"[yellow]Warning:[/] Worktree at {wt_path} is missing.")
-        if prompt_confirm("Recreate worktree?"):
+        if typer.confirm("Recreate worktree?", default=False):
             require_repo()
             repo = REPO_ROOT
             os.makedirs(os.path.dirname(wt_path), exist_ok=True)
@@ -416,7 +418,7 @@ def start_session(todo_id: str, mode: str = "") -> None:
     real_wt = os.path.realpath(wt_path)
     real_cwd = os.path.realpath(os.getcwd())
     if real_wt != real_cwd:
-        if prompt_confirm(f"Session is in {wt_path}. Switch directory?"):
+        if typer.confirm(f"Session is in {wt_path}. Switch directory?", default=True):
             os.chdir(wt_path)
 
     # Validate branch
@@ -426,7 +428,7 @@ def start_session(todo_id: str, mode: str = "") -> None:
     ).stdout.strip()
     if branch and wt_branch and wt_branch != branch:
         console.print(f"[yellow]Warning:[/] Worktree is on branch '{wt_branch}', todo expects '{branch}'.")
-        if prompt_confirm(f"Switch to {branch}?"):
+        if typer.confirm(f"Switch to {branch}?", default=True):
             subprocess.run(["git", "-C", wt_path, "checkout", branch], capture_output=True)
 
     launch_claude(todo_id, session_id)

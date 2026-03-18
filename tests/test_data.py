@@ -149,20 +149,23 @@ class TestResolveId:
         assert resolve_id("ment-audit") == "fix-document-audit"
 
     def test_ambiguous_prefix(self):
+        import click
         write_todos([
             {"id": "fix-a", "title": "A", "status": "active"},
             {"id": "fix-b", "title": "B", "status": "active"},
         ])
-        with pytest.raises(SystemExit):
+        with pytest.raises((SystemExit, click.exceptions.BadParameter)):
             resolve_id("fix-")
 
     def test_no_match(self):
+        import click
         write_todos([{"id": "abc", "title": "ABC", "status": "active"}])
-        with pytest.raises(SystemExit):
+        with pytest.raises((SystemExit, click.exceptions.BadParameter)):
             resolve_id("xyz")
 
     def test_empty(self):
-        with pytest.raises(SystemExit):
+        import click
+        with pytest.raises((SystemExit, click.exceptions.BadParameter)):
             resolve_id("")
 
 

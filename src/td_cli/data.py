@@ -157,8 +157,8 @@ def done_todos() -> list[dict]:
 def resolve_id(input_id: str) -> str:
     """Resolve exact/prefix/suffix match. Returns full ID or raises SystemExit."""
     if not input_id:
-        console.print("[red]Error:[/] No ID provided.")
-        raise SystemExit(1)
+        import typer
+        raise typer.BadParameter("No ID provided.")
 
     todos = read_todos()
 
@@ -177,8 +177,8 @@ def resolve_id(input_id: str) -> str:
     if len(suffix_matches) == 1:
         return suffix_matches[0]["id"]
 
-    console.print(f"[red]Error:[/] No unique todo found for '{input_id}'.")
-    raise SystemExit(1)
+    import typer
+    raise typer.BadParameter(f"No unique todo found for '{input_id}'")
 
 
 # --- Notes ------------------------------------------------------------------

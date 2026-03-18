@@ -4,7 +4,8 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
-from rich.prompt import Confirm, Prompt
+import typer
+from rich.prompt import Prompt
 
 from td_cli.config import console
 from td_cli.data import read_todos
@@ -18,7 +19,7 @@ def check_fzf() -> None:
         raise SystemExit(1)
 
 
-# --- Rich prompt wrappers (replace gum) ------------------------------------
+# --- Prompt wrappers --------------------------------------------------------
 
 def prompt_input(placeholder: str, default: str = "") -> str:
     """Prompt for text input. Returns empty string on cancel."""
@@ -26,14 +27,6 @@ def prompt_input(placeholder: str, default: str = "") -> str:
         return Prompt.ask(f"[dim]{placeholder}[/]", default=default, console=console)
     except (KeyboardInterrupt, EOFError):
         return ""
-
-
-def prompt_confirm(message: str, default: bool = False) -> bool:
-    """Prompt for yes/no confirmation."""
-    try:
-        return Confirm.ask(message, default=default, console=console)
-    except (KeyboardInterrupt, EOFError):
-        return False
 
 
 def prompt_choose(header: str, *options: str) -> str | None:
