@@ -5,12 +5,11 @@ set -euo pipefail
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/rosgoo/td/main/install-remote.sh | bash
-#   curl -fsSL https://raw.githubusercontent.com/rosgoo/td/main/install-remote.sh | bash -s -- --version v0.2.0
+#   curl -fsSL https://raw.githubusercontent.com/rosgoo/td/main/install-remote.sh | bash -s -- --version v0.4.0
 #   curl -fsSL https://raw.githubusercontent.com/rosgoo/td/main/install-remote.sh | bash -s -- --no-hooks
 
 REPO="rosgoo/td"
 BIN_DIR="${HOME}/.local/bin"
-LIB_DIR="${HOME}/.local/lib/todo"
 CONFIG_DIR="${HOME}/.config/claude-todo"
 
 RED='\033[0;31m'
@@ -43,7 +42,14 @@ fi
 echo -e "${BOLD}Installing td ${VERSION}${RESET}"
 echo ""
 
-# --- Download & extract -------------------------------------------------------
+# --- Check Python -----------------------------------------------------------
+
+if ! command -v python3 &>/dev/null; then
+    echo -e "${RED}✗${RESET} python3 not found. Install Python 3.10+" >&2
+    exit 1
+fi
+
+# --- Download & extract -----------------------------------------------------
 
 TARBALL_URL="https://github.com/${REPO}/archive/refs/tags/${VERSION}.tar.gz"
 TMP_DIR=$(mktemp -d)
@@ -55,34 +61,25 @@ if ! curl -fsSL "$TARBALL_URL" | tar xz -C "$TMP_DIR"; then
     exit 1
 fi
 
-# GitHub tarballs extract to td-{version}/ (strip the v prefix from dir name)
 SRC_DIR="${TMP_DIR}/td-${VERSION#v}"
 if [[ ! -d "$SRC_DIR" ]]; then
-    # Fallback: find the extracted directory
     SRC_DIR=$(find "$TMP_DIR" -maxdepth 1 -type d ! -name "$(basename "$TMP_DIR")" | head -1)
 fi
 
-# --- Check dependencies -------------------------------------------------------
+# --- Dependencies -----------------------------------------------------------
 
 echo "Dependencies:"
-_install_dep() {
-    local cmd="$1" pkg="${2:-$1}"
-    if command -v "$cmd" &>/dev/null; then
-        echo -e "  ${GREEN}✓${RESET} ${cmd}"
-    else
-        echo -e "  ${DIM}Installing ${cmd}...${RESET}"
-        if command -v brew &>/dev/null; then
-            brew install "$pkg"
-        else
-            echo -e "  ${RED}✗${RESET} ${cmd} not found. Install it manually: https://github.com/${pkg}" >&2
-            return 1
-        fi
-    fi
-}
 
-_install_dep jq stedolan/jq
-_install_dep fzf junegunn/fzf
-_install_dep gum charmbracelet/gum
+if command -v fzf &>/dev/null; then
+    echo -e "  ${GREEN}✓${RESET} fzf"
+else
+    echo -e "  ${DIM}Installing fzf...${RESET}"
+    if command -v brew &>/dev/null; then
+        brew install fzf
+    else
+        echo -e "  ${RED}✗${RESET} fzf not found. See https://github.com/junegunn/fzf#installation" >&2
+    fi
+fi
 
 if command -v claude &>/dev/null; then
     echo -e "  ${GREEN}✓${RESET} claude"
@@ -91,26 +88,38 @@ else
 fi
 echo ""
 
-# --- Install files -------------------------------------------------------------
+# --- Install Python package -------------------------------------------------
 
-# Lib
-mkdir -p "$LIB_DIR"
-cp "${SRC_DIR}"/lib/todo/*.sh "$LIB_DIR/"
-echo -e "${GREEN}✓${RESET} Installed lib to ${LIB_DIR}"
+echo "Python package:"
+if command -v pipx &>/dev/null; then
+    if pipx list 2>/dev/null | grep -q "td-cli"; then
+        pipx install --force "${SRC_DIR}" 2>/dev/null
+        echo -e "  ${GREEN}✓${RESET} Upgraded td-cli via pipx"
+    else
+        pipx install "${SRC_DIR}" 2>/dev/null
+        echo -e "  ${GREEN}✓${RESET} Installed td-cli via pipx"
+    fi
+elif command -v pip3 &>/dev/null; then
+    pip3 install --user --break-system-packages "${SRC_DIR}" 2>/dev/null || \
+    pip3 install --user "${SRC_DIR}" 2>/dev/null
+    echo -e "  ${GREEN}✓${RESET} Installed td-cli via pip3 --user"
+else
+    VENV_DIR="${HOME}/.local/share/td-venv"
+    if [[ ! -d "$VENV_DIR" ]]; then
+        python3 -m venv "$VENV_DIR"
+    fi
+    "${VENV_DIR}/bin/pip" install "${SRC_DIR}" -q
+    mkdir -p "$BIN_DIR"
+    ln -sf "${VENV_DIR}/bin/td" "${BIN_DIR}/td"
+    echo -e "  ${GREEN}✓${RESET} Installed td-cli in venv at ${VENV_DIR}"
+fi
+echo ""
 
-# Binary
-mkdir -p "$BIN_DIR"
-cp "${SRC_DIR}/td" "${BIN_DIR}/td"
-chmod +x "${BIN_DIR}/td"
-echo -e "${GREEN}✓${RESET} Installed ${BIN_DIR}/td"
+# --- Hooks ------------------------------------------------------------------
 
-# VERSION
-cp "${SRC_DIR}/VERSION" "${HOME}/.local/VERSION"
-echo -e "${GREEN}✓${RESET} Installed VERSION (${VERSION#v})"
-
-# Hook scripts
 echo "Hooks:"
 if [[ -f "${SRC_DIR}/hooks/pre-compact" ]]; then
+    mkdir -p "$BIN_DIR"
     cp "${SRC_DIR}/hooks/pre-compact" "${BIN_DIR}/td-pre-compact"
     chmod +x "${BIN_DIR}/td-pre-compact"
     echo -e "  ${GREEN}✓${RESET} Installed ${BIN_DIR}/td-pre-compact"
@@ -119,7 +128,8 @@ else
 fi
 echo ""
 
-# Claude Code commands
+# --- Claude Code commands ---------------------------------------------------
+
 CLAUDE_COMMANDS_DIR="${HOME}/.claude/commands"
 echo "Claude Code commands:"
 if [[ -f "${SRC_DIR}/commands/td.md" ]]; then
@@ -131,7 +141,7 @@ else
 fi
 echo ""
 
-# --- Settings ------------------------------------------------------------------
+# --- Settings ---------------------------------------------------------------
 
 if [[ ! -f "${CONFIG_DIR}/settings.json" ]]; then
     if [[ -f "${SRC_DIR}/settings.json" ]]; then
@@ -143,18 +153,27 @@ else
     echo -e "${DIM}Settings already exist at ${CONFIG_DIR}/settings.json${RESET}"
 fi
 
-# --- Claude Code hooks ---------------------------------------------------------
+# --- Claude Code hooks ------------------------------------------------------
 
 if [[ "$SKIP_HOOKS" == true ]]; then
     echo -e "${DIM}Skipping Claude Code hook configuration (--no-hooks)${RESET}"
     echo ""
 else
     CLAUDE_SETTINGS="${HOME}/.claude/settings.json"
-    TD_HOOK='{"type":"command","command":"td-pre-compact","timeout":10}'
 
     _has_td_hook() {
-        jq -e '.hooks.PreCompact // [] | .. | select(.command? == "td-pre-compact")' \
-            "$CLAUDE_SETTINGS" &>/dev/null
+        python3 -c "
+import json, sys
+try:
+    d = json.load(open('$CLAUDE_SETTINGS'))
+    hooks = d.get('hooks', {}).get('PreCompact', [])
+    for group in hooks:
+        for h in group.get('hooks', []):
+            if h.get('command') == 'td-pre-compact':
+                sys.exit(0)
+    sys.exit(1)
+except: sys.exit(1)
+" 2>/dev/null
     }
 
     echo "Claude Code hooks:"
@@ -162,39 +181,32 @@ else
         if _has_td_hook; then
             echo -e "  ${GREEN}✓${RESET} PreCompact hook already configured"
         else
-            tmp=$(mktemp)
-            jq --argjson hook "$TD_HOOK" '
-                .hooks //= {} |
-                .hooks.PreCompact //= [] |
-                .hooks.PreCompact += [{"hooks": [$hook]}]
-            ' "$CLAUDE_SETTINGS" > "$tmp" && mv "$tmp" "$CLAUDE_SETTINGS"
+            python3 -c "
+import json
+with open('$CLAUDE_SETTINGS') as f:
+    d = json.load(f)
+d.setdefault('hooks', {}).setdefault('PreCompact', []).append({
+    'hooks': [{'type': 'command', 'command': 'td-pre-compact', 'timeout': 10}]
+})
+with open('$CLAUDE_SETTINGS', 'w') as f:
+    json.dump(d, f, indent=2)
+"
             echo -e "  ${GREEN}✓${RESET} Added PreCompact hook to ${CLAUDE_SETTINGS}"
         fi
     else
         mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
-        cat > "$CLAUDE_SETTINGS" <<-ENDJSON
-{
-  "hooks": {
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "td-pre-compact",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  }
-}
-ENDJSON
+        python3 -c "
+import json
+d = {'hooks': {'PreCompact': [{'hooks': [{'type': 'command', 'command': 'td-pre-compact', 'timeout': 10}]}]}}
+with open('$CLAUDE_SETTINGS', 'w') as f:
+    json.dump(d, f, indent=2)
+"
         echo -e "  ${GREEN}✓${RESET} Created ${CLAUDE_SETTINGS} with PreCompact hook"
     fi
     echo ""
 fi
 
-# --- PATH check ----------------------------------------------------------------
+# --- PATH check -------------------------------------------------------------
 
 if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
     echo -e "${BOLD}Add to your shell profile (~/.zshrc):${RESET}"
@@ -203,7 +215,7 @@ if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
     echo ""
 fi
 
-# --- Done ----------------------------------------------------------------------
+# --- Done -------------------------------------------------------------------
 
 echo -e "${GREEN}${BOLD}td ${VERSION#v} installed.${RESET}"
-echo -e "${DIM}Run 'td help' to get started. Run 'td update' to update later.${RESET}"
+echo -e "${DIM}Run 'td help' to get started.${RESET}"

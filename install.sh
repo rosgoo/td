@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# install.sh — Install todo and its dependencies
+# install.sh — Install td (Python) and its dependencies
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -17,33 +17,38 @@ for arg in "$@"; do
 done
 
 BIN_DIR="${HOME}/.local/bin"
-LIB_DIR="${HOME}/.local/lib/todo"
 CONFIG_DIR="${HOME}/.config/claude-todo"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo -e "${BOLD}Installing todo${RESET}"
+echo -e "${BOLD}Installing td${RESET}"
 echo ""
 
-# Check for Homebrew (macOS)
-install_dep() {
-    local cmd="$1" pkg="${2:-$1}"
-    if command -v "$cmd" &>/dev/null; then
-        echo -e "  ${GREEN}✓${RESET} ${cmd}"
-    else
-        echo -e "  ${DIM}Installing ${cmd}...${RESET}"
-        if command -v brew &>/dev/null; then
-            brew install "$pkg"
-        else
-            echo -e "  ${RED}✗${RESET} ${cmd} not found. Install it manually: https://github.com/${pkg}" >&2
-            return 1
-        fi
-    fi
-}
+# --- Dependencies -----------------------------------------------------------
 
 echo "Dependencies:"
-install_dep jq stedolan/jq
-install_dep fzf junegunn/fzf
-install_dep gum charmbracelet/gum
 
+# fzf (required)
+if command -v fzf &>/dev/null; then
+    echo -e "  ${GREEN}✓${RESET} fzf"
+else
+    echo -e "  ${DIM}Installing fzf...${RESET}"
+    if command -v brew &>/dev/null; then
+        brew install fzf
+    else
+        echo -e "  ${RED}✗${RESET} fzf not found. See https://github.com/junegunn/fzf#installation" >&2
+    fi
+fi
+
+# Python 3.10+ (required)
+if command -v python3 &>/dev/null; then
+    PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    echo -e "  ${GREEN}✓${RESET} python3 (${PY_VER})"
+else
+    echo -e "  ${RED}✗${RESET} python3 not found. Install Python 3.10+" >&2
+    exit 1
+fi
+
+# claude (optional but recommended)
 if command -v claude &>/dev/null; then
     echo -e "  ${GREEN}✓${RESET} claude"
 else
@@ -51,36 +56,38 @@ else
 fi
 echo ""
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# --- Install Python package -------------------------------------------------
 
-# Copy lib files
-mkdir -p "$LIB_DIR"
-cp "${SCRIPT_DIR}"/lib/todo/*.sh "$LIB_DIR/"
-echo -e "${GREEN}✓${RESET} Installed lib files to ${LIB_DIR}"
-
-# Copy VERSION file
-cp "${SCRIPT_DIR}/VERSION" "${HOME}/.local/VERSION"
-
-# Symlink td binary
-mkdir -p "$BIN_DIR"
-
-if [[ -L "${BIN_DIR}/td" ]]; then
-    existing=$(readlink "${BIN_DIR}/td")
-    if [[ "$existing" == "${SCRIPT_DIR}/td" ]]; then
-        echo -e "${GREEN}✓${RESET} ${BIN_DIR}/td already linked"
+echo "Python package:"
+if command -v pipx &>/dev/null; then
+    # Prefer pipx for isolated install
+    if pipx list 2>/dev/null | grep -q "td-cli"; then
+        pipx install --force "${SCRIPT_DIR}" 2>/dev/null
+        echo -e "  ${GREEN}✓${RESET} Upgraded td-cli via pipx"
     else
-        echo -e "${DIM}Updating symlink (was ${existing})${RESET}"
-        ln -sf "${SCRIPT_DIR}/td" "${BIN_DIR}/td"
-        echo -e "${GREEN}✓${RESET} Linked ${BIN_DIR}/td"
+        pipx install "${SCRIPT_DIR}" 2>/dev/null
+        echo -e "  ${GREEN}✓${RESET} Installed td-cli via pipx"
     fi
-elif [[ -e "${BIN_DIR}/td" ]]; then
-    echo -e "${RED}✗${RESET} ${BIN_DIR}/td already exists (not a symlink). Remove it first."
+elif command -v pip3 &>/dev/null; then
+    pip3 install --user --break-system-packages "${SCRIPT_DIR}" 2>/dev/null || \
+    pip3 install --user "${SCRIPT_DIR}" 2>/dev/null
+    echo -e "  ${GREEN}✓${RESET} Installed td-cli via pip3 --user"
 else
-    ln -s "${SCRIPT_DIR}/td" "${BIN_DIR}/td"
-    echo -e "${GREEN}✓${RESET} Linked ${BIN_DIR}/td"
+    # Create a venv at ~/.local/share/td-venv and install there
+    VENV_DIR="${HOME}/.local/share/td-venv"
+    if [[ ! -d "$VENV_DIR" ]]; then
+        python3 -m venv "$VENV_DIR"
+    fi
+    "${VENV_DIR}/bin/pip" install "${SCRIPT_DIR}" -q
+    # Symlink the td binary
+    mkdir -p "$BIN_DIR"
+    ln -sf "${VENV_DIR}/bin/td" "${BIN_DIR}/td"
+    echo -e "  ${GREEN}✓${RESET} Installed td-cli in venv at ${VENV_DIR}"
 fi
+echo ""
 
-# Hook scripts
+# --- Hooks ------------------------------------------------------------------
+
 _link_hook() {
     local name="$1"
     local src="${SCRIPT_DIR}/hooks/${name}"
@@ -89,6 +96,7 @@ _link_hook() {
         echo -e "  ${DIM}Skipping hook ${name} (not found)${RESET}"
         return
     fi
+    mkdir -p "$BIN_DIR"
     if [[ -L "$dst" && "$(readlink "$dst")" == "$src" ]]; then
         echo -e "  ${GREEN}✓${RESET} ${dst} already linked"
     else
@@ -101,7 +109,8 @@ echo "Hooks:"
 _link_hook pre-compact
 echo ""
 
-# Claude Code custom commands (skills)
+# --- Claude Code commands ---------------------------------------------------
+
 CLAUDE_COMMANDS_DIR="${HOME}/.claude/commands"
 _link_command() {
     local name="$1"
@@ -124,16 +133,20 @@ echo "Claude Code commands:"
 _link_command td
 echo ""
 
-# Settings template
+# --- Settings ---------------------------------------------------------------
+
 if [[ ! -f "${CONFIG_DIR}/settings.json" ]]; then
-    mkdir -p "$CONFIG_DIR"
-    cp "${SCRIPT_DIR}/settings.json" "${CONFIG_DIR}/settings.json"
-    echo -e "${GREEN}✓${RESET} Created ${CONFIG_DIR}/settings.json"
+    if [[ -f "${SCRIPT_DIR}/settings.json" ]]; then
+        mkdir -p "$CONFIG_DIR"
+        cp "${SCRIPT_DIR}/settings.json" "${CONFIG_DIR}/settings.json"
+        echo -e "${GREEN}✓${RESET} Created ${CONFIG_DIR}/settings.json"
+    fi
 else
     echo -e "${DIM}Settings already exist at ${CONFIG_DIR}/settings.json${RESET}"
 fi
 
-# Check PATH
+# --- PATH check -------------------------------------------------------------
+
 if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
     echo ""
     echo -e "${BOLD}Add to your shell profile (~/.zshrc):${RESET}"
@@ -142,7 +155,8 @@ if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
     echo ""
 fi
 
-# Configure Claude Code hooks in ~/.claude/settings.json
+# --- Claude Code hooks ------------------------------------------------------
+
 if [[ "$SKIP_HOOKS" == true ]]; then
     echo -e "${DIM}Skipping Claude Code hook configuration (--no-hooks)${RESET}"
     echo ""
@@ -151,8 +165,18 @@ else
     TD_HOOK='{"type":"command","command":"td-pre-compact","timeout":10}'
 
     _has_td_hook() {
-        jq -e '.hooks.PreCompact // [] | .. | select(.command? == "td-pre-compact")' \
-            "$CLAUDE_SETTINGS" &>/dev/null
+        python3 -c "
+import json, sys
+try:
+    d = json.load(open('$CLAUDE_SETTINGS'))
+    hooks = d.get('hooks', {}).get('PreCompact', [])
+    for group in hooks:
+        for h in group.get('hooks', []):
+            if h.get('command') == 'td-pre-compact':
+                sys.exit(0)
+    sys.exit(1)
+except: sys.exit(1)
+" 2>/dev/null
     }
 
     echo "Claude Code hooks:"
@@ -160,37 +184,31 @@ else
         if _has_td_hook; then
             echo -e "  ${GREEN}✓${RESET} PreCompact hook already configured"
         else
-            tmp=$(mktemp)
-            jq --argjson hook "$TD_HOOK" '
-                .hooks //= {} |
-                .hooks.PreCompact //= [] |
-                .hooks.PreCompact += [{"hooks": [$hook]}]
-            ' "$CLAUDE_SETTINGS" > "$tmp" && mv "$tmp" "$CLAUDE_SETTINGS"
+            python3 -c "
+import json
+with open('$CLAUDE_SETTINGS') as f:
+    d = json.load(f)
+d.setdefault('hooks', {}).setdefault('PreCompact', []).append({
+    'hooks': [{'type': 'command', 'command': 'td-pre-compact', 'timeout': 10}]
+})
+with open('$CLAUDE_SETTINGS', 'w') as f:
+    json.dump(d, f, indent=2)
+"
             echo -e "  ${GREEN}✓${RESET} Added PreCompact hook to ${CLAUDE_SETTINGS}"
         fi
     else
         mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
-        cat > "$CLAUDE_SETTINGS" <<-ENDJSON
-{
-  "hooks": {
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "td-pre-compact",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  }
-}
-ENDJSON
+        python3 -c "
+import json
+d = {'hooks': {'PreCompact': [{'hooks': [{'type': 'command', 'command': 'td-pre-compact', 'timeout': 10}]}]}}
+with open('$CLAUDE_SETTINGS', 'w') as f:
+    json.dump(d, f, indent=2)
+"
         echo -e "  ${GREEN}✓${RESET} Created ${CLAUDE_SETTINGS} with PreCompact hook"
     fi
     echo ""
 fi
 
-# Show help (includes logo)
-"${SCRIPT_DIR}/td" help
+# --- Done -------------------------------------------------------------------
+
+td help 2>/dev/null || echo -e "${GREEN}${BOLD}td installed.${RESET} Run 'td help' to get started."

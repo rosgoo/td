@@ -1,20 +1,19 @@
 PREFIX ?= /usr/local
 
 install:
-	install -d $(PREFIX)/bin
-	install -d $(PREFIX)/lib/todo
-	install -m 755 td $(PREFIX)/bin/td
-	install -m 644 lib/todo/*.sh $(PREFIX)/lib/todo/
-	install -m 644 VERSION $(PREFIX)/VERSION
-	install -m 755 hooks/pre-compact $(PREFIX)/bin/td-pre-compact
+	pip install .
 	install -d $(HOME)/.claude/commands
 	install -m 644 commands/td.md $(HOME)/.claude/commands/td.md
+	install -d $(PREFIX)/bin
+	install -m 755 hooks/pre-compact $(PREFIX)/bin/td-pre-compact
 
 uninstall:
-	rm -f $(PREFIX)/bin/td
+	pip uninstall -y td-cli
 	rm -f $(PREFIX)/bin/td-pre-compact
-	rm -f $(PREFIX)/VERSION
-	rm -rf $(PREFIX)/lib/todo
 	rm -f $(HOME)/.claude/commands/td.md
 
-.PHONY: install uninstall
+test:
+	bash test_todo.sh
+	python -m pytest tests/ -v
+
+.PHONY: install uninstall test
