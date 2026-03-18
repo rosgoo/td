@@ -12,7 +12,7 @@ Minimal task and session manager for agentic coding.
 - **Session persistence** — links Claude sessions and working directories to tasks so you can resume exactly where you left off and reduce context overload
 - **Plan-aware sessions** — each todo has a `plan.md` that gets injected into Claude's system prompt, so context carries across sessions automatically
 - **Subtasks** — break todos into smaller pieces that inherit their parent's branch, worktree, and links
-- **`td do`** — create a todo and drop into a Claude session directly
+- **`td do`** — create a todo and drop into a Claude session directly (run with no name to get a random NYC-inspired name)
 - **`/td` slash command** — manage todos from inside any Claude Code session
 - **Git worktree isolation** — optionally spin up a dedicated worktree and branch per todo, keeping work separated
 - **`td try`** — test worktree changes on your main repo without switching directories, reinstalling dependencies, or rebuilding
@@ -25,6 +25,7 @@ Minimal task and session manager for agentic coding.
 
 ```bash
 td do "Fix the login bug"       # Create a todo and start Claude immediately
+td do                            # Same thing — suggests a random NYC name
 td                               # Open the picker — select to resume the session
 td done                          # Mark it as done when finished
 ```
@@ -143,7 +144,7 @@ All commands accept an optional `[id]` (or ID prefix) to skip the interactive pi
 |---------|-------------|
 | `td` | Open the fzf picker (create or select a todo) |
 | `td new "title"` | Create a new todo |
-| `td do "title"` | Create a todo and immediately open a Claude session |
+| `td do ["title"]` | Create a todo and immediately open a Claude session (random name if omitted) |
 | `td done [id]` | Mark a todo as done (optionally cleans up worktree/branch) |
 | `td rename [id] "title"` | Rename a todo |
 | `td delete [id]` | Delete a todo and all related data (notes, worktree, branch) |

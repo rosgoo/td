@@ -27,8 +27,9 @@ _gum_confirm() {
 }
 
 _gum_input() {
-    # Usage: _gum_input "placeholder"
-    gum input --placeholder "$1" --cursor.foreground="4" --prompt "› " --prompt.foreground="4"
+    # Usage: _gum_input "placeholder" [extra gum flags...]
+    local placeholder="$1"; shift
+    gum input --placeholder "$placeholder" --cursor.foreground="4" --prompt "› " --prompt.foreground="4" "$@"
 }
 
 _action_menu() {

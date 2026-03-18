@@ -90,7 +90,7 @@ cmd_do() {
     done
 
     if [[ -z "$title" ]]; then
-        title=$(_gum_input "What are you working on?")
+        title=$(_gum_input "What are you working on?" --value "$(_random_name)")
         if [[ -z "$title" ]]; then
             exit 0
         fi
