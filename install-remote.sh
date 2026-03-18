@@ -70,17 +70,6 @@ fi
 
 echo "Dependencies:"
 
-if command -v fzf &>/dev/null; then
-    echo -e "  ${GREEN}✓${RESET} fzf"
-else
-    echo -e "  ${DIM}Installing fzf...${RESET}"
-    if command -v brew &>/dev/null; then
-        brew install fzf
-    else
-        echo -e "  ${RED}✗${RESET} fzf not found. See https://github.com/junegunn/fzf#installation" >&2
-    fi
-fi
-
 if command -v claude &>/dev/null; then
     echo -e "  ${GREEN}✓${RESET} claude"
 else

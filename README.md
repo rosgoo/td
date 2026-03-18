@@ -36,13 +36,26 @@ Inside a Claude session, use the `/td` slash command to manage todos without lea
 
 ## Installation
 
-Requires **Python 3.10+** and **fzf**.
+Requires **Python 3.10+**. Check your version:
+
+```bash
+python3 --version
+```
+
+Most macOS users already have Python 3 via Xcode command line tools or Homebrew. If not:
+
+```bash
+brew install python    # macOS
+# or visit https://python.org/downloads
+```
+
+### Quick install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rosgoo/td/main/install-remote.sh | bash
 ```
 
-This downloads the latest release, installs the Python package (via pipx, pip, or a managed venv), and sets up the Claude Code hook and `/td` slash command. Make sure `~/.local/bin` is in your `PATH`:
+This downloads the latest release, installs the Python package (via pipx, pip, or a managed venv), and sets up the Claude Code hook and `/td` slash command. fzf is bundled — no separate install needed. Make sure `~/.local/bin` is in your `PATH`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -133,10 +146,9 @@ This uses the `cursor` CLI command, which Cursor installs via **Cursor > Install
 | Tool | Purpose |
 |------|---------|
 | [Python 3.10+](https://python.org) | Runtime |
-| [fzf](https://github.com/junegunn/fzf) | Fuzzy picker |
 | [Claude Code](https://claude.ai/code) | AI coding sessions |
 
-Python packages (installed automatically): [typer](https://typer.tiangolo.com), [rich](https://rich.readthedocs.io).
+Python packages (installed automatically): [typer](https://typer.tiangolo.com), [rich](https://rich.readthedocs.io), [iterfzf](https://github.com/dahlia/iterfzf) (bundles fzf).
 
 ---
 

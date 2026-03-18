@@ -11,12 +11,28 @@ from td_cli.config import console
 from td_cli.data import read_todos
 
 
-# --- Dependency checks ------------------------------------------------------
+# --- fzf binary resolution --------------------------------------------------
+
+def _fzf_bin() -> str:
+    """Return path to fzf binary: bundled (via iterfzf) or system."""
+    try:
+        from iterfzf import BUNDLED_EXECUTABLE
+        return BUNDLED_EXECUTABLE
+    except ImportError:
+        pass
+    # Fall back to system fzf
+    if subprocess.run(["which", "fzf"], capture_output=True).returncode == 0:
+        return "fzf"
+    console.print("[red]Error:[/] fzf is not installed. Install iterfzf (`pip install iterfzf`) or fzf (https://github.com/junegunn/fzf)")
+    raise SystemExit(1)
+
+
+FZF = _fzf_bin()
+
 
 def check_fzf() -> None:
-    if subprocess.run(["which", "fzf"], capture_output=True).returncode != 0:
-        console.print("[red]Error:[/] fzf is not installed. See https://github.com/junegunn/fzf#installation")
-        raise SystemExit(1)
+    """Validate fzf is available (already resolved at import time)."""
+    pass  # FZF resolution above handles this
 
 
 # --- Prompt wrappers --------------------------------------------------------
@@ -52,7 +68,7 @@ def action_menu(header: str, *options: str) -> str | None:
     check_fzf()
     lines = "\n".join(f"{i}  {opt}" for i, opt in enumerate(options, 1))
     result = subprocess.run(
-        ["fzf", "--header", header, "--layout=reverse", "--height=~20",
+        [FZF, "--header", header, "--layout=reverse", "--height=~20",
          "--no-info", "--no-scrollbar", "--border", "--ansi", "--no-multi",
          "--prompt=› ", "--bind", "one:accept"],
         input=lines, capture_output=True, text=True,
@@ -72,7 +88,7 @@ def pick_todo(header: str = "Select a todo", prompt: str = "❯ ") -> str | None
         return None
 
     result = subprocess.run(
-        ["fzf", "--header", header, "--layout=reverse", "--height=80%",
+        [FZF, "--header", header, "--layout=reverse", "--height=80%",
          "--with-nth=4..", "--no-hscroll", "--delimiter=\t", "--header-first",
          "--border", "--ansi", "--no-multi", f"--prompt={prompt}"],
         input=lines, capture_output=True, text=True,

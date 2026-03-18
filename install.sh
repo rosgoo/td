@@ -27,18 +27,6 @@ echo ""
 
 echo "Dependencies:"
 
-# fzf (required)
-if command -v fzf &>/dev/null; then
-    echo -e "  ${GREEN}✓${RESET} fzf"
-else
-    echo -e "  ${DIM}Installing fzf...${RESET}"
-    if command -v brew &>/dev/null; then
-        brew install fzf
-    else
-        echo -e "  ${RED}✗${RESET} fzf not found. See https://github.com/junegunn/fzf#installation" >&2
-    fi
-fi
-
 # Python 3.10+ (required)
 if command -v python3 &>/dev/null; then
     PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')

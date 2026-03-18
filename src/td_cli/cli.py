@@ -659,6 +659,13 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
     selected_id = ""
     url = ""
 
+    # Typer leaves ArgumentInfo objects when arguments aren't provided on the CLI;
+    # normalise to empty strings so `in` and other str ops work.
+    if not isinstance(arg1, str):
+        arg1 = ""
+    if not isinstance(arg2, str):
+        arg2 = ""
+
     if arg1 and arg2:
         selected_id = resolve_id(arg1)
         url = arg2
@@ -924,7 +931,7 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
 def find(query: str = typer.Argument("")) -> None:
     """Search Claude sessions, create a todo, and resume."""
     from td_cli.session import start_session
-    from td_cli.ui import check_fzf, action_menu, pick_todo, prompt_input
+    from td_cli.ui import check_fzf, action_menu, pick_todo, prompt_input, FZF
 
     check_fzf()
     stderr.print("[dim]Scanning sessions…[/]")
@@ -934,10 +941,9 @@ def find(query: str = typer.Argument("")) -> None:
         stderr.print("[yellow]No sessions found.[/]")
         raise typer.Exit()
 
-    import subprocess
     header = f'Sessions matching "{query}" — select to adopt (ESC to cancel)' if query else "Select a session to adopt as a todo (ESC to cancel)"
     result = subprocess.run(
-        ["fzf", "--header", header, "--layout=reverse", "--height=80%",
+        [FZF, "--header", header, "--layout=reverse", "--height=80%",
          "--with-nth=4..", "--delimiter=\t", "--header-first", "--border",
          "--ansi", "--no-multi", "--no-sort", "--prompt=find ❯ ",
          "--preview-window=hidden"],
@@ -1321,8 +1327,7 @@ def _select_todo(todo_id: str) -> None:
 
 def _picker() -> None:
     """Main interactive picker loop."""
-    import subprocess
-    from td_cli.ui import check_fzf, format_fzf_lines, prompt_input
+    from td_cli.ui import check_fzf, format_fzf_lines, prompt_input, FZF
 
     check_fzf()
     show_done = False
@@ -1340,7 +1345,7 @@ def _picker() -> None:
 
         header = "TODOs — enter: open · ctrl-d: toggle done · esc: quit"
         result = subprocess.run(
-            ["fzf", "--header", header, "--layout=reverse", "--height=80%",
+            [FZF, "--header", header, "--layout=reverse", "--height=80%",
              "--with-nth=4..", "--no-hscroll", "--delimiter=\t", "--header-first",
              "--border", "--ansi", "--no-multi", "--no-sort", "--prompt=❯ ",
              "--preview-window=hidden", "--expect=ctrl-d"],
