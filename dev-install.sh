@@ -4,8 +4,7 @@ set -euo pipefail
 # dev-install.sh — Set up local dev environment for td
 #
 # After running this:
-#   td       → Python dev version (from .venv, editable install)
-#   td-prod  → Bash production version (original td script)
+#   td  → Python dev version (from .venv, editable install)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="${HOME}/.local/bin"
@@ -26,14 +25,9 @@ echo "✓ Installed td-cli (editable) + pytest"
 # td → Python dev version
 mkdir -p "$BIN_DIR"
 ln -sf "${VENV_DIR}/bin/td" "${BIN_DIR}/td"
-echo "✓ td → Python dev (${VENV_DIR}/bin/td)"
-
-# td-prod → Bash production version
-ln -sf "${SCRIPT_DIR}/td" "${BIN_DIR}/td-prod"
-echo "✓ td-prod → Bash production (${SCRIPT_DIR}/td)"
+echo "✓ td → ${VENV_DIR}/bin/td"
 
 echo ""
 echo "Done. Test with:"
-echo "  td version        # Python dev"
-echo "  td-prod version   # Bash production"
-echo "  make test          # Run all tests"
+echo "  td version    # verify"
+echo "  make test     # run all tests"

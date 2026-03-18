@@ -13,7 +13,6 @@ uninstall:
 	rm -f $(HOME)/.claude/commands/td.md
 
 test:
-	bash test_todo.sh
 	python -m pytest tests/ -v
 
 .PHONY: install uninstall test
