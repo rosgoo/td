@@ -348,34 +348,66 @@ def list_cmd(json_mode: bool = typer.Option(False, "--json")) -> None:
         stderr.print("[dim]No active todos.[/]")
         raise typer.Exit()
 
-    todo_items = [t for t in todos if t.get("group", "todo") == "todo"]
-    backlog_items = [t for t in todos if t.get("group", "todo") == "backlog"]
+    # Build hierarchy helpers
+    by_id = {t["id"]: t for t in todos}
+    children_map: dict[str, list[dict]] = {}
+    for t in todos:
+        pid = t.get("parent_id", "")
+        if pid:
+            children_map.setdefault(pid, []).append(t)
 
-    def _section(items: list[dict], icon: str) -> None:
-        for t in items:
-            stderr.print(f"\n  {icon} [bold]{t['title']}[/]  [dim]{t['id']}[/]")
-            parts = []
-            if t.get("linear_ticket"):
-                parts.append(f"[magenta]{t['linear_ticket']}[/]")
-            if t.get("branch"):
-                parts.append(f"[cyan]{t['branch']}[/]")
-            if t.get("github_pr"):
-                parts.append(f"[cyan]{t['github_pr']}[/]")
-            if parts:
-                stderr.print(f"    {'  '.join(parts)}")
-            if t.get("worktree_path"):
-                stderr.print(f"    [dim]{t['worktree_path']}[/]")
-            stderr.print(f"    [dim]{t.get('created_at', '')[:10]}[/]")
+    def _depth(t: dict) -> int:
+        d, cur = 0, t
+        while cur.get("parent_id") and cur["parent_id"] in by_id:
+            d += 1
+            cur = by_id[cur["parent_id"]]
+        return d
 
-    if todo_items:
-        stderr.print(f"\n  [bold]TODO[/] [dim]({len(todo_items)})[/]")
+    def _emit_tree(node: dict) -> list[dict]:
+        result = [node]
+        kids = children_map.get(node["id"], [])
+        for kid in sorted(kids, key=lambda k: k.get("created_at", "")):
+            result.extend(_emit_tree(kid))
+        return result
+
+    def _section(roots: list[dict], icon: str) -> None:
+        for root in roots:
+            for t in _emit_tree(root):
+                d = _depth(t)
+                indent = "   " * d
+                cur_icon = icon if d == 0 else "[dim]└─[/]"
+                stderr.print(f"\n  {indent}{cur_icon} [bold]{t['title']}[/]  [dim]{t['id']}[/]")
+                parts = []
+                if t.get("linear_ticket"):
+                    parts.append(f"[magenta]{t['linear_ticket']}[/]")
+                if t.get("branch"):
+                    parts.append(f"[cyan]{t['branch']}[/]")
+                if t.get("github_pr"):
+                    parts.append(f"[cyan]{t['github_pr']}[/]")
+                if parts:
+                    stderr.print(f"  {indent}    {'  '.join(parts)}")
+                if t.get("worktree_path"):
+                    stderr.print(f"  {indent}    [dim]{t['worktree_path']}[/]")
+                stderr.print(f"  {indent}    [dim]{t.get('created_at', '')[:10]}[/]")
+
+    todo_roots = sorted(
+        [t for t in todos if not t.get("parent_id") and t.get("group", "todo") == "todo"],
+        key=lambda t: t.get("last_opened_at") or t.get("created_at", ""), reverse=True,
+    )
+    backlog_roots = sorted(
+        [t for t in todos if not t.get("parent_id") and t.get("group", "todo") == "backlog"],
+        key=lambda t: t.get("last_opened_at") or t.get("created_at", ""), reverse=True,
+    )
+
+    if todo_roots:
+        stderr.print(f"\n  [bold]TODO[/] [dim]({len([t for t in todos if t.get('group', 'todo') == 'todo'])})[/]")
         stderr.print(f"  [dim]{'─' * 50}[/]")
-        _section(todo_items, "[green]◉[/]")
+        _section(todo_roots, "[green]◉[/]")
 
-    if backlog_items:
-        stderr.print(f"\n  [dim]Backlog[/] [dim]({len(backlog_items)})[/]")
+    if backlog_roots:
+        stderr.print(f"\n  [dim]Backlog[/] [dim]({len([t for t in todos if t.get('group', 'todo') == 'backlog'])})[/]")
         stderr.print(f"  [dim]{'─' * 50}[/]")
-        _section(backlog_items, "[dim]○[/]")
+        _section(backlog_roots, "[dim]○[/]")
 
     stderr.print()
 

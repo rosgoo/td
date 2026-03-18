@@ -25,12 +25,12 @@ td find <query>             # Search todos by title
 
 ## Guidelines
 
-- Run `td list` to discover todo IDs — IDs are human-readable slugs (e.g., `fix-document-audit`)
+- Run `td list` to discover todo IDs — IDs are human-readable slugs (e.g., `fix-document-audit`). The list shows the full hierarchy (parent → subtask tree), not a flat list.
 - IDs can be shortened to a unique prefix (e.g., `td done fix-doc` instead of the full ID)
 - When the user asks to create, complete, or manage tasks, use `td` commands
 - Use `td note` to record important decisions or context on the current todo
 - Use `td link` to attach relevant URLs (PRs, tickets, branches) to todos
 - Use `td get <id>` to inspect a todo's full details (branch, worktree, links, etc.)
-- Read a todo's `plan.md` (via `td show <id>`) to understand its full context
+- Read a todo's `plan.md` (via `td show <id>`) to understand its full context. **For subtasks, also check the parent's `plan.md`** — parent plans often contain high-level context, constraints, and decisions that apply to all subtasks. Walk up the hierarchy (`td get <id>` shows `parent_id`) and read each ancestor's plan.
 - Use `td split` to break large todos into subtasks when the user's work has distinct parts
 - When updating a todo's `plan.md`, always use the full absolute path (e.g., `/Users/ryan/td/todo/.../plan.md`), not `~/td/...` — the Write tool does not expand `~`
