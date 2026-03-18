@@ -868,62 +868,13 @@ cmd_link() {
 # ---------------------------------------------------------------------------
 
 cmd_open() {
-    local selected_id
-    selected_id=$(_pick_todo "Select todo to open in browser" "open ❯ ") || exit 0
-
-    local todo
-    todo=$(_get_todo "$selected_id")
-    local title branch ticket
-    title=$(echo "$todo" | jq -r '.title')
-    branch=$(echo "$todo" | jq -r '.branch // empty')
-    ticket=$(echo "$todo" | jq -r '.linear_ticket // empty')
-
-    local options=()
-    local urls=()
-
-    if [[ -n "$ticket" ]]; then
-        local ticket_url
-        ticket_url=$(_linear_ticket_url "$ticket")
-        options+=("Linear: ${ticket} (${ticket_url})")
-        urls+=("$ticket_url")
-    fi
-    if [[ -n "$branch" ]]; then
-        local branch_url
-        branch_url=$(_github_branch_url "$branch")
-        if [[ -n "$branch_url" ]]; then
-            options+=("GitHub: ${branch} (${branch_url})")
-            urls+=("$branch_url")
-        fi
-    fi
-
-    if [[ ${#options[@]} -eq 0 ]]; then
-        echo -e "${YELLOW}No links to open.${RESET} Use 'td link' to add a Linear ticket or branch."
-        exit 0
-    fi
-
-    if [[ ${#options[@]} -eq 1 ]]; then
-        echo -e "${DIM}Opening ${urls[0]}${RESET}"
-        _open_url "${urls[0]}"
-        exit 0
-    fi
-
-    options+=("Open all")
-    local choice
-    choice=$(_gum_choose "${title}" "${options[@]}") || exit 0
-    if [[ "$choice" == "Open all" ]]; then
-        for url in "${urls[@]}"; do
-            echo -e "${DIM}Opening ${url}${RESET}"
-            _open_url "$url"
-        done
+    local id="${1:-}"
+    if [[ -z "$id" ]]; then
+        id=$(_pick_todo "Select todo" "open ❯ ") || exit 0
     else
-        for i in "${!options[@]}"; do
-            if [[ "${options[$i]}" == "$choice" ]]; then
-                echo -e "${DIM}Opening ${urls[$i]}${RESET}"
-                _open_url "${urls[$i]}"
-                break
-            fi
-        done
+        id=$(_resolve_id "$id") || exit 1
     fi
+    _select_todo "$id"
 }
 
 # ---------------------------------------------------------------------------
@@ -1773,7 +1724,7 @@ cmd_help() {
     echo -e "  ${CYAN}td find${RESET} ${DIM}[query]${RESET}                 Find Claude session → create todo & resume"
     echo -e "  ${CYAN}td edit${RESET} ${DIM}[id]${RESET}                    Open plan in editor"
     echo -e "  ${CYAN}td link${RESET} ${DIM}[id]${RESET}                   Link Linear/GitHub/plan"
-    echo -e "  ${CYAN}td open${RESET}                         Open links in browser"
+    echo -e "  ${CYAN}td open${RESET} ${DIM}[id]${RESET}                    Open action menu for a todo"
     echo -e "  ${CYAN}td browse${RESET}                       Open notes dir in editor"
     echo ""
     echo -e "  ${BOLD}Non-interactive${RESET} ${DIM}(AI-friendly)${RESET}"

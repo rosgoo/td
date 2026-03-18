@@ -145,6 +145,7 @@ All commands accept an optional `[id]` (or ID prefix) to skip the interactive pi
 | `td` | Open the fzf picker (create or select a todo) |
 | `td new "title"` | Create a new todo |
 | `td do ["title"]` | Create a todo and immediately open a Claude session (random name if omitted) |
+| `td open [id]` | Open the action menu for a todo (resume session, link, done, etc.) |
 | `td done [id]` | Mark a todo as done (optionally cleans up worktree/branch) |
 | `td rename [id] "title"` | Rename a todo |
 | `td delete [id]` | Delete a todo and all related data (notes, worktree, branch) |
@@ -164,7 +165,6 @@ All commands accept an optional `[id]` (or ID prefix) to skip the interactive pi
 | Command | Description |
 |---------|-------------|
 | `td link [id] [url/path]` | Link a Linear ticket, GitHub URL, or notes file |
-| `td open` | Open Linear ticket or GitHub branch/PR in browser |
 | `td get <id>` | Print todo as JSON |
 
 `td link` auto-detects the type from the input:
