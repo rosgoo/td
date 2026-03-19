@@ -9,17 +9,15 @@ Minimal task and session manager for agentic coding.
 
 ## Features
 
-- **Session persistence** — links Claude sessions and working directories to tasks so you can resume exactly where you left off and reduce context overload
-- **Plan-aware sessions** — each todo has a `plan.md` that gets injected into Claude's system prompt, so context carries across sessions automatically
+- **Session management** — links Claude sessions and working directories to tasks so you can resume exactly where you left off and reduce context overload
 - **Subtasks** — break todos into smaller pieces that inherit their parent's branch, worktree, and links
+- **Plan management** — each task and subtask have their own `plan.md` that gets injected into Claude's system prompt, so context carries across sessions automatically. Subtasks automatically get their parent plans injected too. Works great with Obisdian!
+- **worktree management** — spin up dedicated worktrees and leverage `td try` and `td take`for easy worktree management
 - **`td do`** — create a todo and drop into a Claude session directly (run with no name to get a random NYC-inspired name)
-- **`/td` slash command** — manage todos from inside any Claude Code session
-- **Git worktree isolation** — optionally spin up a dedicated worktree and branch per todo, keeping work separated
-- **`td try` / `td take`** — test worktree changes on your main repo, then cherry-pick fixes back into the worktree
+- **`/td` slash command** — manage todos from inside any Claude Code session using the non-interactive cli commands
 - **Linear & GitHub linking** — attach tickets, PRs, and branches to todos; open them from the picker
 - **Pre-compact hook** — automatically snapshots conversation context into `plan.md` before Claude compacts, so notes are never lost
-- **Non-interactive CLI** — every action has an ID-addressable command, so Claude (or scripts) can manage todos without a UI
-- **Self-updating** — `td update` pulls the latest release
+- **Local first** — all storage is done in markdown and json reducing dependencies
 
 ## Quick Start
 
