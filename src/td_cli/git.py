@@ -77,6 +77,16 @@ def extract_linear_ticket(url: str) -> str:
     return url.upper()
 
 
+def is_local_branch(name: str) -> bool:
+    """Check if name is a local git branch."""
+    if not REPO_ROOT:
+        return False
+    return subprocess.run(
+        ["git", "-C", REPO_ROOT, "show-ref", "--verify", "--quiet", f"refs/heads/{name}"],
+        capture_output=True,
+    ).returncode == 0
+
+
 def extract_github_branch(url: str) -> str:
     """Extract branch name from GitHub URL. PR URLs return empty."""
     if "github.com" in url and "/tree/" in url:

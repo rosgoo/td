@@ -11,7 +11,7 @@ import typer
 from rich.console import Console
 
 # Help panel names for command grouping
-_INTERACTIVE = "Interactive"
+_INTERACTIVE = "Interactive (just td)"
 _NON_INTERACTIVE = "Non-interactive (AI-friendly)"
 _ADMIN = "Admin"
 
@@ -57,10 +57,88 @@ def main(
         _picker()
 
 
-@app.command(rich_help_panel=_ADMIN)
-def version() -> None:
-    """Print version."""
-    typer.echo(f"td {_version_str()}")
+# ---------------------------------------------------------------------------
+# td do [-n "title"]
+# ---------------------------------------------------------------------------
+
+def _resolve_parent(child_of: str) -> str:
+    """Resolve -c value to a parent ID. '?' triggers picker."""
+    from td_cli.data import resolve_id
+    from td_cli.ui import pick_todo
+
+    if child_of == "?":
+        parent_id = pick_todo("Select parent todo", "parent ❯ ")
+        if not parent_id:
+            raise typer.Abort()
+        return parent_id
+    return resolve_id(child_of)
+
+
+@app.command("do", rich_help_panel=_INTERACTIVE)
+def do_cmd(
+    title: str = typer.Argument(None),
+    child_of: str = typer.Option(None, "-c", "--child-of", help="Create as subtask (parent ID/name, or '?' to pick)."),
+) -> None:
+    """Create a todo and start Claude immediately."""
+    from td_cli.config import NOTES_DIR
+    from td_cli.data import (
+        generate_id, notes_folder_name, read_todos, write_todos, now_iso,
+        random_name, get_todo,
+    )
+    from td_cli.session import start_session
+    from td_cli.ui import prompt_input
+
+    if not title:
+        title = prompt_input("What are you working on?", default=random_name())
+        if not title:
+            raise typer.Abort()
+
+    # Resolve parent if creating as subtask
+    parent_id = None
+    parent = None
+    if child_of is not None:
+        parent_id = _resolve_parent(child_of)
+        parent = get_todo(parent_id)
+        if not parent:
+            raise typer.Exit(1)
+
+    todo_id = generate_id(title)
+
+    if parent:
+        parent_notes = parent.get("notes_path", "")
+        parent_notes_dir = Path(parent_notes).parent if parent_notes else NOTES_DIR
+        notes_path = parent_notes_dir / notes_folder_name(todo_id, title, parent_notes_dir)
+    else:
+        notes_path = NOTES_DIR / notes_folder_name(todo_id, title)
+
+    notes_path.mkdir(parents=True, exist_ok=True)
+    plan = notes_path / "plan.md"
+    plan_content = f"# {title}\n\nCreated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+    if parent:
+        plan_content += f"Parent: {parent['title']}\n"
+    plan_content += "\n## Plan\n\n"
+    plan.write_text(plan_content)
+
+    now = now_iso()
+    todos = read_todos()
+    entry = {
+        "id": todo_id, "title": title, "created_at": now,
+        "branch": parent.get("branch", "") if parent else "",
+        "worktree_path": parent.get("worktree_path", "") if parent else "",
+        "notes_path": str(plan),
+        "status": "active", "group": "todo",
+    }
+    if parent_id:
+        entry["parent_id"] = parent_id
+    todos.append(entry)
+    write_todos(todos)
+
+    if parent:
+        stderr.print(f"[green]✓[/] Created subtask: [bold]{title}[/]  [dim]{todo_id}[/]")
+        stderr.print(f"  [dim]Parent: {parent['title']}[/]")
+    else:
+        stderr.print(f"[green]✓[/] Created: [bold]{title}[/]  [dim]{todo_id}[/]")
+    start_session(todo_id, "current-dir")
 
 
 # ---------------------------------------------------------------------------
@@ -71,11 +149,13 @@ def version() -> None:
 def new(
     title: str = typer.Argument(None),
     backlog: bool = typer.Option(False, "-b", "--backlog"),
+    child_of: str = typer.Option(None, "-c", "--child-of", help="Create as subtask (parent ID/name, or '?' to pick)."),
 ) -> None:
     """Create a new todo."""
     from td_cli.config import NOTES_DIR, QUIET
     from td_cli.data import (
         generate_id, notes_folder_name, read_todos, write_todos, now_iso,
+        get_todo,
     )
     from td_cli.ui import prompt_input
 
@@ -84,80 +164,61 @@ def new(
         if not title:
             raise typer.Abort()
 
+    # Resolve parent if creating as subtask
+    parent_id = None
+    parent = None
+    if child_of is not None:
+        parent_id = _resolve_parent(child_of)
+        parent = get_todo(parent_id)
+        if not parent:
+            raise typer.Exit(1)
+
     group = "backlog" if backlog else "todo"
     todo_id = generate_id(title)
-    notes_path = NOTES_DIR / notes_folder_name(todo_id, title)
+
+    if parent:
+        parent_notes = parent.get("notes_path", "")
+        parent_notes_dir = Path(parent_notes).parent if parent_notes else NOTES_DIR
+        notes_path = parent_notes_dir / notes_folder_name(todo_id, title, parent_notes_dir)
+    else:
+        notes_path = NOTES_DIR / notes_folder_name(todo_id, title)
 
     # Create plan.md
     notes_path.mkdir(parents=True, exist_ok=True)
     plan = notes_path / "plan.md"
-    plan.write_text(
-        f"# {title}\n\nCreated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n## Plan\n\n"
-    )
+    plan_content = f"# {title}\n\nCreated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+    if parent:
+        plan_content += f"Parent: {parent['title']}\n"
+    plan_content += "\n## Plan\n\n"
+    plan.write_text(plan_content)
 
     now = now_iso()
     todos = read_todos()
-    todos.append({
+    entry = {
         "id": todo_id,
         "title": title,
         "created_at": now,
-        "branch": "",
-        "worktree_path": "",
+        "branch": parent.get("branch", "") if parent else "",
+        "worktree_path": parent.get("worktree_path", "") if parent else "",
         "notes_path": str(plan),
         "status": "active",
         "group": group,
-    })
+    }
+    if parent_id:
+        entry["parent_id"] = parent_id
+    todos.append(entry)
     write_todos(todos)
 
     if QUIET:
         typer.echo(todo_id)
     else:
         group_label = " [dim](backlog)[/]" if group == "backlog" else ""
-        stderr.print(f"[green]✓[/] Created: [bold]{title}[/]{group_label}  [dim]{todo_id}[/]")
-        stderr.print(f"  [dim]Next: td edit {todo_id}  ·  td link {todo_id}  ·  td split {todo_id}[/]")
-
-
-# ---------------------------------------------------------------------------
-# td do [-n "title"]
-# ---------------------------------------------------------------------------
-
-@app.command("do", rich_help_panel=_INTERACTIVE)
-def do_cmd(
-    title: str = typer.Argument(None),
-) -> None:
-    """Create a todo and start Claude immediately."""
-    from td_cli.config import NOTES_DIR
-    from td_cli.data import (
-        generate_id, notes_folder_name, read_todos, write_todos, now_iso,
-        random_name,
-    )
-    from td_cli.session import start_session
-    from td_cli.ui import prompt_input
-
-    if not title:
-        title = prompt_input("What are you working on?", default=random_name())
-        if not title:
-            raise typer.Abort()
-
-    todo_id = generate_id(title)
-    notes_path = NOTES_DIR / notes_folder_name(todo_id, title)
-    notes_path.mkdir(parents=True, exist_ok=True)
-    plan = notes_path / "plan.md"
-    plan.write_text(
-        f"# {title}\n\nCreated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n## Plan\n\n"
-    )
-
-    now = now_iso()
-    todos = read_todos()
-    todos.append({
-        "id": todo_id, "title": title, "created_at": now,
-        "branch": "", "worktree_path": "", "notes_path": str(plan),
-        "status": "active", "group": "todo",
-    })
-    write_todos(todos)
-
-    stderr.print(f"[green]✓[/] Created: [bold]{title}[/]  [dim]{todo_id}[/]")
-    start_session(todo_id, "current-dir")
+        if parent:
+            stderr.print(f"[green]✓[/] Created subtask: [bold]{title}[/]{group_label}  [dim]{todo_id}[/]")
+            stderr.print(f"  [dim]Parent: {parent['title']}[/]")
+        else:
+            stderr.print(f"[green]✓[/] Created: [bold]{title}[/]{group_label}  [dim]{todo_id}[/]")
+            stderr.print(f"  [dim]Next: td edit {todo_id}  ·  td link {todo_id}  ·  td split {todo_id}[/]")
 
 
 # ---------------------------------------------------------------------------
@@ -722,7 +783,7 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
         raise typer.Exit(1)
     title = todo["title"]
 
-    # Auto-detect link type from URL
+    # Auto-detect link type from URL/value
     if url:
         todos = read_todos()
         if "linear.app" in url:
@@ -745,7 +806,8 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
                     t["branch"] = new_branch
             write_todos(todos)
             stderr.print(f"[green]✓[/] Linked: [bold]{title}[/] › [cyan]{new_branch}[/]")
-        elif "/" in url or url.endswith(".md") or url.endswith(".txt"):
+        elif url.endswith(".md") or url.endswith(".txt") or url.startswith("/") or url.startswith("~") or url.startswith("./") or url.startswith(".."):
+            # Explicit file path
             notes_input = url.replace("~", str(Path.home()), 1) if url.startswith("~") else url
             notes_input = str(Path(notes_input).resolve())
             if not os.path.isfile(notes_input):
@@ -756,8 +818,15 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
             write_todos(todos)
             stderr.print(f"[green]✓[/] Linked: [bold]{title}[/] › [dim]{notes_input}[/]")
         else:
-            stderr.print("[red]Unknown URL.[/] Paste a Linear URL, GitHub URL, or file path.")
-            raise typer.Exit(1)
+            # Treat as branch name (e.g. "my-branch", "feature/foo")
+            from td_cli.git import is_local_branch
+            if not is_local_branch(url):
+                stderr.print(f"[yellow]Warning:[/] Branch '{url}' not found locally.")
+            for t in todos:
+                if t["id"] == selected_id:
+                    t["branch"] = url
+            write_todos(todos)
+            stderr.print(f"[green]✓[/] Linked: [bold]{title}[/] › [cyan]{url}[/]")
         return
 
     # Interactive link type selector
@@ -779,6 +848,18 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
                 t["linear_ticket"] = ticket_id
         write_todos(todos)
         stderr.print(f"[green]✓[/] Linked: [bold]{title}[/] › [magenta]{ticket_id}[/]")
+    elif choice == "Git branch":
+        branch_name = prompt_input("Branch name")
+        if not branch_name:
+            raise typer.Abort()
+        from td_cli.git import is_local_branch
+        if not is_local_branch(branch_name):
+            stderr.print(f"[yellow]Warning:[/] Branch '{branch_name}' not found locally.")
+        for t in todos:
+            if t["id"] == selected_id:
+                t["branch"] = branch_name
+        write_todos(todos)
+        stderr.print(f"[green]✓[/] Linked: [bold]{title}[/] › [cyan]{branch_name}[/]")
     elif choice == "GitHub PR":
         pr = prompt_input("GitHub PR URL")
         if not pr or "github.com" not in pr or "/pull/" not in pr:
@@ -789,7 +870,6 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
                 t["github_pr"] = pr
         write_todos(todos)
         stderr.print(f"[green]✓[/] Linked: [bold]{title}[/] › [cyan]{pr}[/]")
-    # Other interactive cases omitted for brevity — they're less common
 
 
 # ---------------------------------------------------------------------------
@@ -1120,6 +1200,16 @@ def _build_session_lines(query: str = "") -> str:
 
 
 # ---------------------------------------------------------------------------
+# td version
+# ---------------------------------------------------------------------------
+
+@app.command(rich_help_panel=_ADMIN)
+def version() -> None:
+    """Print version."""
+    typer.echo(f"td {_version_str()}")
+
+
+# ---------------------------------------------------------------------------
 # td settings
 # ---------------------------------------------------------------------------
 
@@ -1314,6 +1404,7 @@ def _select_todo(todo_id: str) -> None:
     options.append("Mark as done")
     options.append("Move to TODO" if group == "backlog" else "Move to backlog")
     options.append("Add subtask")
+    options.append("Rename")
     options.append("Open plan")
     if ticket:
         options.append("Linear")
@@ -1341,6 +1432,8 @@ def _select_todo(todo_id: str) -> None:
         _bump_group(todo_id, "backlog")
     elif choice == "Add subtask":
         split(parent_id=todo_id)
+    elif choice == "Rename":
+        rename(todo_id=todo_id)
     elif choice == "Open plan":
         open_notes(notes_path)
     elif choice == "Linear":
