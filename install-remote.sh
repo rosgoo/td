@@ -81,17 +81,17 @@ echo ""
 
 echo "Python package:"
 if command -v pipx &>/dev/null; then
-    if pipx list 2>/dev/null | grep -q "td-cli"; then
+    if pipx list 2>/dev/null | grep -q "td"; then
         pipx install --force "${SRC_DIR}" 2>/dev/null
-        echo -e "  ${GREEN}✓${RESET} Upgraded td-cli via pipx"
+        echo -e "  ${GREEN}✓${RESET} Upgraded td via pipx"
     else
         pipx install "${SRC_DIR}" 2>/dev/null
-        echo -e "  ${GREEN}✓${RESET} Installed td-cli via pipx"
+        echo -e "  ${GREEN}✓${RESET} Installed td via pipx"
     fi
 elif command -v pip3 &>/dev/null; then
     pip3 install --user --break-system-packages "${SRC_DIR}" 2>/dev/null || \
     pip3 install --user "${SRC_DIR}" 2>/dev/null
-    echo -e "  ${GREEN}✓${RESET} Installed td-cli via pip3 --user"
+    echo -e "  ${GREEN}✓${RESET} Installed td via pip3 --user"
 else
     VENV_DIR="${HOME}/.local/share/td-venv"
     if [[ ! -d "$VENV_DIR" ]]; then
@@ -100,7 +100,7 @@ else
     "${VENV_DIR}/bin/pip" install "${SRC_DIR}" -q
     mkdir -p "$BIN_DIR"
     ln -sf "${VENV_DIR}/bin/td" "${BIN_DIR}/td"
-    echo -e "  ${GREEN}✓${RESET} Installed td-cli in venv at ${VENV_DIR}"
+    echo -e "  ${GREEN}✓${RESET} Installed td in venv at ${VENV_DIR}"
 fi
 echo ""
 

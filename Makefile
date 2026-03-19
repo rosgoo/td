@@ -8,7 +8,7 @@ install:
 	install -m 755 hooks/pre-compact $(PREFIX)/bin/td-pre-compact
 
 uninstall:
-	pip uninstall -y td-cli
+	pip uninstall -y td
 	rm -f $(PREFIX)/bin/td-pre-compact
 	rm -f $(HOME)/.claude/commands/td.md
 

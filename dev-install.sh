@@ -20,7 +20,7 @@ fi
 
 "${VENV_DIR}/bin/pip" install -e "${SCRIPT_DIR}" -q
 "${VENV_DIR}/bin/pip" install pytest -q
-echo "✓ Installed td-cli (editable) + pytest"
+echo "✓ Installed td (editable) + pytest"
 
 # td → Python dev version
 mkdir -p "$BIN_DIR"

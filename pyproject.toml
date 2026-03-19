@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "td-cli"
+name = "td"
 dynamic = ["version"]
 description = "Minimal task manager for Claude Code"
 requires-python = ">=3.10"

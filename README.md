@@ -72,8 +72,8 @@ td update
 **pip / pipx:**
 
 ```bash
-pipx install td-cli    # isolated install (recommended)
-pip install td-cli     # or pip
+pipx install td    # isolated install (recommended)
+pip install td     # or pip
 ```
 
 **From source (for development):**

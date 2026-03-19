@@ -1384,7 +1384,7 @@ def update() -> None:
         else:
             stderr.print(f"  [dim]Current: {current}[/]")
             stderr.print(f"  [bold]Latest:  {latest}[/]")
-            stderr.print("\nUpdate with: pip install --upgrade td-cli")
+            stderr.print("\nUpdate with: pip install --upgrade td")
     except Exception:
         stderr.print("[red]✗[/] Could not check for updates")
         raise typer.Exit(1)

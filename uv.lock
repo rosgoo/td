@@ -101,7 +101,7 @@ wheels = [
 ]
 
 [[package]]
-name = "td-cli"
+name = "td"
 source = { editable = "." }
 dependencies = [
     { name = "iterfzf" },
