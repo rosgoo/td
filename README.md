@@ -7,7 +7,20 @@
 
 Minimal task and session manager for agentic coding.
 
-## Features
+## 📑 Table of Contents
+
+- [✨ Features](#-features)
+- [🚀 Quick Start](#-quick-start)
+- [📦 Installation](#-installation)
+- [💻 Commands](#-commands)
+- [🌳 Worktrees](#-worktrees)
+- [🤖 Claude Integration](#-claude-integration)
+- [⚙️ Configuration](#️-configuration)
+- [📂 Data](#-data)
+
+---
+
+## ✨ Features
 
 - **Session management** — links Claude sessions and working directories to tasks so you can resume exactly where you left off and reduce context overload
 - **Subtasks** — break todos into smaller pieces that inherit their parent's branch, worktree, and links
@@ -19,7 +32,9 @@ Minimal task and session manager for agentic coding.
 - **Pre-compact hook** — automatically snapshots conversation context into `plan.md` before Claude compacts, so notes are never lost
 - **Local first** — all storage is done in markdown and json reducing dependencies
 
-## Quick Start
+---
+
+## 🚀 Quick Start
 
 ```bash
 td do "Fix the login bug"       # Create a todo and start Claude immediately
@@ -32,7 +47,7 @@ Inside a Claude session, use the `/td` slash command to manage todos without lea
 
 ---
 
-## Installation
+## 📦 Installation
 
 Requires **Python 3.10+**. Check your version:
 
@@ -79,10 +94,10 @@ pip install td     # or pip
 ```bash
 git clone https://github.com/rosgoo/td.git
 cd td
-./dev-install.sh    # creates .venv, installs editable, sets up td + td-prod
+./dev-install.sh    # creates .venv, installs editable, links td to ~/.local/bin
 ```
 
-This gives you `td` pointing to the Python dev version (editable — changes to `src/` take effect immediately) and `td-prod` pointing to the bash production version.
+This gives you `td` pointing to the Python dev version (editable — changes to `src/` take effect immediately).
 
 ### Hook configuration
 
@@ -150,41 +165,57 @@ Python packages (installed automatically): [typer](https://typer.tiangolo.com), 
 
 ---
 
-## Commands
+## 💻 Commands
 
 All commands accept an optional `[id]` (or ID prefix) to skip the interactive picker. This makes them usable by AI agents non-interactively.
 
-### Core
+### Interactive
 
 | Command | Description |
 |---------|-------------|
 | `td` | Open the fzf picker (create or select a todo) |
-| `td new "title"` | Create a new todo |
 | `td do ["title"]` | Create a todo and immediately open a Claude session (random name if omitted) |
 | `td open [id]` | Open the action menu for a todo (resume session, link, done, etc.) |
-| `td done [id]` | Mark a todo as done (optionally cleans up worktree/branch) |
-| `td rename [id] "title"` | Rename a todo |
-| `td delete [id]` | Delete a todo and all related data (notes, worktree, branch) |
-| `td list` | List all active todos |
-| `td archive` | Show completed todos |
+| `td edit [id]` | Open plan.md in your editor |
+| `td browse` | Open notes directory in your editor |
+| `td find [query]` | Search Claude sessions, create a todo, and resume |
 
-### Plans & Notes
+`td do` and `td new` support `-c <parent>` to create as a subtask under a parent todo.
+
+### Non-interactive (AI-friendly)
 
 | Command | Description |
 |---------|-------------|
-| `td edit [id]` | Open notes in your editor |
+| `td new ["title"]` | Create a new todo (`-b` for backlog, `-c` for subtask) |
+| `td split [id] ["title"]` | Create a subtask under a parent todo |
+| `td done [id]` | Mark a todo as done (optionally cleans up worktree/branch) |
+| `td list` | List active todos |
+| `td archive` | Show completed todos |
+| `td get <id>` | Print todo as JSON |
 | `td plan <id>` | Print the plan contents |
-| `td plan <id> "text"` | Append text to a todo's plan (non-interactive) |
-| `td plan <id> --replace <file>` | Replace plan.md with an existing file |
+| `td plan <id> "text"` | Append text to a todo's plan |
+| `td plan <id> -r <file>` | Replace plan.md with an existing file |
 | `td plan <id> -o` | Open plan.md in your editor |
 | `td show [id]` | Print the absolute path to plan.md |
+| `td bump [id]` | Toggle a todo between TODO and backlog |
+| `td rename [id] "title"` | Rename a todo |
+| `td delete [id]` | Delete a todo and all related data (notes, worktree, branch) |
+| `td link [id] [url/path]` | Link a Linear ticket, branch, PR, or plan file |
+| `td try [id]` | Apply worktree diff to a try branch on main repo |
+| `td take [id]` | Cherry-pick try branch changes back into the worktree |
+| `td sync` | Two-way sync: create/remove todos and dirs (`-n` for dry run) |
 
-### Linking
+### Admin
 
 | Command | Description |
 |---------|-------------|
-| `td link [id] [url/path]` | Link a Linear ticket, GitHub URL, or notes file |
-| `td get <id>` | Print todo as JSON |
+| `td init` | Configure settings interactively |
+| `td settings` | Print the current settings file |
+| `td update` | Update to latest version |
+| `td version` | Print version |
+| `td help` | Show help |
+
+### 🔗 Linking
 
 `td link` auto-detects the type from the input:
 
@@ -195,49 +226,28 @@ td link abc123 https://github.com/org/repo/tree/feat  # Git branch
 td link abc123 ~/vault/my-notes.md                    # External notes file
 ```
 
-### Subtasks
-
-| Command | Description |
-|---------|-------------|
-| `td split [id] ["title"]` | Add a subtask under a parent todo |
+### 🧩 Subtasks
 
 Subtasks inherit their parent's branch, worktree, and Linear ticket. Metadata that matches the parent is deduplicated in the picker view.
 
-### Setup
+```bash
+td split abc123 "Write tests"       # Add a subtask under abc123
+td new "Write tests" -c abc123      # Same thing
+td do "Write tests" -c abc123       # Create subtask and start Claude
+```
 
-| Command | Description |
-|---------|-------------|
-| `td init` | Configure settings interactively |
-| `td settings` | Print the current settings file |
+### 🔄 Sync
 
-### Sync
-
-| Command | Description |
-|---------|-------------|
-| `td sync` | Two-way sync: create todos for orphaned dirs, remove todos for missing dirs |
-| `td sync -n` | Dry run — show what would happen without making changes |
+```bash
+td sync       # Two-way sync: create todos for orphaned dirs, remove todos for missing dirs
+td sync -n    # Dry run — show what would happen without making changes
+```
 
 If you create a folder in `~/td/todo/` manually (e.g. from Obsidian), `td sync` picks it up and creates a todo for it. If you delete a folder, `td sync` removes the orphaned todo. Nested subdirectories become subtasks automatically.
 
-### Worktrees
-
-| Command | Description |
-|---------|-------------|
-| `td try [id]` | Apply worktree diff to a `try-<slug>` branch on main repo |
-| `td take [id]` | Cherry-pick try branch commits back into the worktree |
-
-### Other
-
-| Command | Description |
-|---------|-------------|
-| `td browse` | Open notes directory in your editor |
-| `td update` | Update to latest version |
-| `td version` | Print version |
-| `td help` | Show help |
-
 ---
 
-## Worktrees
+## 🌳 Worktrees
 
 Todos can optionally use [git worktrees](https://git-scm.com/docs/git-worktree) for branch isolation. When you choose "Start Claude (new worktree)" from the picker, a worktree is created at `.claude/worktrees/<slug>` with a branch named `todo/<slug>`.
 
@@ -288,7 +298,7 @@ worktree (todo/my-feature)          main repo
 
 ---
 
-## Claude Integration
+## 🤖 Claude Integration
 
 When you start or resume a Claude session from a todo, the tool:
 
@@ -314,7 +324,7 @@ The hook only activates for sessions linked to a todo (matched by `session_id`).
 
 ---
 
-## Configuration
+## ⚙️ Configuration
 
 Run `td init` to configure settings interactively. Run `td settings` to view the current settings file.
 
@@ -329,8 +339,8 @@ This walks you through each setting:
   Current: ~/td
 
   editor — Editor for opening plan.md files
-  Examples: "code", "nvim", "open -a Obsidian"
-  Current: (auto-detect from $EDITOR)
+  Examples: "code", "nvim", "obsidian"
+  Current: (auto-detect)
 
   ...
 ```
@@ -354,7 +364,7 @@ Settings are saved to `~/.config/claude-todo/settings.json`:
 |-------|-------------|---------|
 | `data_dir` | Where todos and notes are stored | `~/td` |
 | `repo` | Git repo root (auto-detected if empty) | auto |
-| `editor` | Editor for notes | `$VISUAL` / `$EDITOR` / `open` |
+| `editor` | Editor for notes | `open` (macOS) / `vi` |
 | `linear_org` | Linear organization slug (for ticket URLs) | _(disabled)_ |
 | `worktree_dir` | Worktree directory relative to repo root | `.claude/worktrees` |
 | `branch_prefix` | Prefix for auto-created branches | `todo` |
@@ -363,7 +373,7 @@ Environment variables override settings: `TODO_DATA_DIR`, `TODO_REPO`, `TODO_EDI
 
 ---
 
-## Data
+## 📂 Data
 
 ```
 ~/td/

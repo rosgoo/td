@@ -16,6 +16,7 @@ def isolated_env(tmp_path, monkeypatch):
 
     data_dir.mkdir()
     (data_dir / "todo").mkdir()
+    (data_dir / "done").mkdir()
     (data_dir / "todos.json").write_text("[]")
 
     repo_dir.mkdir()

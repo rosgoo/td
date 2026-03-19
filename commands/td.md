@@ -2,9 +2,11 @@
 
 You have access to `td`, a task and session manager for agentic coding. Use it to manage the user's todos.
 
-## Current Todos
+## Current Todo
 
-Run `td list` to see all active todos, then read the output to understand what the user is working on.
+**Before running `td list`, check your own system prompt context first.** If this session was started from a todo, your context already contains a `# Current Todo` block with the todo's title, ID, branch, links, and plan contents. Use that information directly — no need to call `td list` or `td get` for the current todo.
+
+If there is no `# Current Todo` block in your context, run `td list` to discover active todos.
 
 ## Available Commands
 
@@ -25,14 +27,16 @@ td rename <id> "new title"  # Rename a todo
 td delete <id> --force      # Delete a todo
 td get <id>                 # Print todo as JSON (for inspecting details)
 td show <id>                # Print the path to a todo's plan.md
+td bump <id>                # Toggle a todo between TODO and backlog
 td list                     # List all active todos
 td try <id>                 # Apply worktree diff to a try branch on main repo
 td take <id>                # Cherry-pick try branch changes back into worktree
-td find <query>             # Search todos by title
+td find <query>             # Search Claude sessions, create a todo, and resume
 ```
 
 ## Guidelines
 
+- **Check context first** — your system prompt may already have `Todo ID:`, `Plan:`, `Branch:`, etc. for the current todo. Use those values directly instead of running commands to rediscover them.
 - Run `td list` to discover todo IDs — IDs are human-readable slugs (e.g., `fix-document-audit`). The list shows the full hierarchy (parent → subtask tree), not a flat list.
 - IDs can be shortened to a unique prefix (e.g., `td done fix-doc` instead of the full ID)
 - When the user asks to create, complete, or manage tasks, use `td` commands

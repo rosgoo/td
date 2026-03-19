@@ -43,6 +43,7 @@ def _s(key: str) -> str:
 DATA_DIR = Path(os.environ.get("TODO_DATA_DIR", "") or _s("data_dir") or Path.home() / "td")
 TODOS_FILE = DATA_DIR / "todos.json"
 NOTES_DIR = DATA_DIR / "todo"
+DONE_DIR = DATA_DIR / "done"
 
 _repo_env = os.environ.get("TODO_REPO", "")
 if _repo_env:

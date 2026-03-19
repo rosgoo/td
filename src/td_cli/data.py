@@ -6,7 +6,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from td_cli.config import DATA_DIR, NOTES_DIR, TODOS_FILE, console
+from td_cli.config import DATA_DIR, DONE_DIR, NOTES_DIR, TODOS_FILE, console
 
 # --- Random names -----------------------------------------------------------
 
@@ -64,6 +64,7 @@ def ensure_setup() -> None:
                     t["notes_path"] = t["notes_path"].replace("/notes/", "/todo/")
             write_todos(todos)
     NOTES_DIR.mkdir(parents=True, exist_ok=True)
+    DONE_DIR.mkdir(parents=True, exist_ok=True)
     if not TODOS_FILE.exists():
         TODOS_FILE.write_text("[]")
 
@@ -190,7 +191,7 @@ def ensure_notes(todo_id: str, title: str) -> str:
     if not todo:
         return ""
 
-    base_dir = NOTES_DIR
+    base_dir = DONE_DIR if todo.get("status") == "done" else NOTES_DIR
     parent_id = todo.get("parent_id", "")
     if parent_id:
         parent = next((t for t in todos if t["id"] == parent_id), None)

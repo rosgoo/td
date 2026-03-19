@@ -305,7 +305,7 @@ def split(
 
 def _archive_todo(todo_id: str) -> None:
     """Mark a todo and its descendants as done, with optional cleanup."""
-    from td_cli.config import REPO_ROOT
+    from td_cli.config import DONE_DIR, NOTES_DIR, REPO_ROOT
     from td_cli.data import get_todo, read_todos, write_todos
 
     todo = get_todo(todo_id)
@@ -328,6 +328,22 @@ def _archive_todo(todo_id: str) -> None:
     for t in todos:
         if t["id"] in all_ids:
             t["status"] = "done"
+
+    # Move top-level todo's notes folder from todo/ → done/
+    notes_path = todo.get("notes_path", "")
+    if notes_path:
+        notes_dir = Path(notes_path).parent
+        # Only move if it's a direct child of NOTES_DIR (not a subtask nested deeper)
+        if notes_dir.is_dir() and notes_dir.parent == NOTES_DIR:
+            dest = DONE_DIR / notes_dir.name
+            notes_dir.rename(dest)
+            # Update notes_path for this todo and all descendants
+            old_prefix = str(notes_dir)
+            new_prefix = str(dest)
+            for t in todos:
+                if t["id"] in all_ids and t.get("notes_path", "").startswith(old_prefix):
+                    t["notes_path"] = t["notes_path"].replace(old_prefix, new_prefix, 1)
+
     write_todos(todos)
 
     stderr.print(f"[green]✓[/] Done: [bold]{title}[/]")
@@ -686,13 +702,18 @@ def rename(todo_id: str = typer.Argument(None), new_title: str = typer.Argument(
 
     # Rename notes folder
     old_notes_path = todo.get("notes_path", "")
-    new_folder = notes_folder_name(todo_id, new_title)
-    new_notes_path = str(NOTES_DIR / new_folder / "plan.md")
+    # Determine which top-level dir the notes currently live in
+    if old_notes_path:
+        containing_dir = Path(old_notes_path).parent.parent
+    else:
+        containing_dir = NOTES_DIR
+    new_folder = notes_folder_name(todo_id, new_title, containing_dir)
+    new_notes_path = str(containing_dir / new_folder / "plan.md")
 
     if old_notes_path:
         old_dir = Path(old_notes_path).parent
-        new_dir = NOTES_DIR / new_folder
-        if old_dir.is_dir() and str(old_dir).startswith(str(NOTES_DIR)) and old_dir != new_dir:
+        new_dir = containing_dir / new_folder
+        if old_dir.is_dir() and old_dir != new_dir:
             old_dir.rename(new_dir)
 
     todos = read_todos()
@@ -712,8 +733,8 @@ def rename(todo_id: str = typer.Argument(None), new_title: str = typer.Argument(
 @app.command(rich_help_panel=_NON_INTERACTIVE)
 def delete(todo_id: str = typer.Argument(None), force: bool = typer.Option(False, "--force")) -> None:
     """Delete a todo and all related data."""
-    from td_cli.config import NOTES_DIR, REPO_ROOT
-    from td_cli.data import resolve_id, get_todo, read_todos, write_todos
+    from td_cli.config import REPO_ROOT
+    from td_cli.data import DATA_DIR, resolve_id, get_todo, read_todos, write_todos
     from td_cli.ui import pick_todo
 
     if not todo_id:
@@ -759,7 +780,7 @@ def delete(todo_id: str = typer.Argument(None), force: bool = typer.Option(False
 
     if notes_path:
         notes_dir = Path(notes_path).parent
-        if notes_dir.is_dir() and str(notes_dir).startswith(str(NOTES_DIR)):
+        if notes_dir.is_dir() and str(notes_dir).startswith(str(DATA_DIR)):
             import shutil
             shutil.rmtree(notes_dir)
             stderr.print("[dim]Deleted plan[/]")
@@ -989,15 +1010,14 @@ def browse() -> None:
 @app.command(rich_help_panel=_NON_INTERACTIVE)
 def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
     """Two-way sync: create/remove todos and dirs."""
-    from td_cli.config import NOTES_DIR
+    from td_cli.config import DONE_DIR, NOTES_DIR
     from td_cli.data import (
         generate_id, get_todo, read_todos, write_todos, now_iso,
     )
 
     created = 0
     removed = 0
-
-    def _sync_dirs(base_dir: Path, parent_id: str = "") -> None:
+    def _sync_dirs(base_dir: Path, parent_id: str = "", status: str = "active") -> None:
         nonlocal created
         if not base_dir.is_dir():
             return
@@ -1023,10 +1043,14 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
             if not title:
                 title = d.name
 
+            status_label = f" [dim](done)[/]" if status == "done" else ""
             if dry_run:
                 label = f"  ↳ {title}" if parent_id else title
-                stderr.print(f"[dim]Would create todo:[/] [bold]{label}[/]")
-                _sync_dirs(d, "dry-run")
+                stderr.print(f"[dim]Would create todo:[/] [bold]{label}[/]{status_label} [dim]({d})[/]")
+                if not plan.exists():
+                    stderr.print(f"  [dim]Would create:[/] {plan}")
+                created += 1
+                _sync_dirs(d, "dry-run", status)
             else:
                 todo_id = generate_id(title)
                 now = now_iso()
@@ -1041,7 +1065,7 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
                 entry: dict = {
                     "id": todo_id, "title": title, "created_at": now,
                     "branch": "", "worktree_path": "", "notes_path": notes_path,
-                    "status": "active", "group": "todo",
+                    "status": status, "group": "todo",
                 }
                 if parent_id:
                     entry["parent_id"] = parent_id
@@ -1051,11 +1075,67 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
                 write_todos(todos)
 
                 label = f"  ↳ {title}" if parent_id else title
-                stderr.print(f"[dim]Created todo:[/] [bold]{label}[/] [dim]({todo_id})[/]")
+                stderr.print(f"[dim]Created todo:[/] [bold]{label}[/]{status_label} [dim]({todo_id})[/]")
                 created += 1
-                _sync_dirs(d, todo_id)
+                _sync_dirs(d, todo_id, status)
 
-    _sync_dirs(NOTES_DIR)
+    _sync_dirs(NOTES_DIR, status="active")
+    _sync_dirs(DONE_DIR, status="done")
+
+    # Move misplaced folders (done todos in todo/, active todos in done/)
+    moved = 0
+    todos = read_todos()
+    for t in todos:
+        notes_path = t.get("notes_path", "")
+        if not notes_path:
+            continue
+        notes_dir = Path(notes_path).parent
+        if not notes_dir.is_dir():
+            continue
+        # Only move top-level folders (direct children of todo/ or done/)
+        if t.get("parent_id"):
+            continue
+        in_todo = notes_dir.parent == NOTES_DIR
+        in_done = notes_dir.parent == DONE_DIR
+        is_done = t.get("status") == "done"
+
+        if is_done and in_todo:
+            dest = DONE_DIR / notes_dir.name
+            if dry_run:
+                stderr.print(f"[dim]Would move:[/] [bold]{t['title']}[/] → [cyan]done/[/]")
+            else:
+                notes_dir.rename(dest)
+                old_prefix = str(notes_dir)
+                new_prefix = str(dest)
+                # Update paths for this todo and all descendants
+                all_ids = {t["id"]}
+                for s in todos:
+                    if s.get("parent_id") in all_ids:
+                        all_ids.add(s["id"])
+                for s in todos:
+                    if s["id"] in all_ids and s.get("notes_path", "").startswith(old_prefix):
+                        s["notes_path"] = s["notes_path"].replace(old_prefix, new_prefix, 1)
+                stderr.print(f"[dim]Moved:[/] [bold]{t['title']}[/] → [cyan]done/[/]")
+            moved += 1
+        elif not is_done and in_done:
+            dest = NOTES_DIR / notes_dir.name
+            if dry_run:
+                stderr.print(f"[dim]Would move:[/] [bold]{t['title']}[/] → [cyan]todo/[/]")
+            else:
+                notes_dir.rename(dest)
+                old_prefix = str(notes_dir)
+                new_prefix = str(dest)
+                all_ids = {t["id"]}
+                for s in todos:
+                    if s.get("parent_id") in all_ids:
+                        all_ids.add(s["id"])
+                for s in todos:
+                    if s["id"] in all_ids and s.get("notes_path", "").startswith(old_prefix):
+                        s["notes_path"] = s["notes_path"].replace(old_prefix, new_prefix, 1)
+                stderr.print(f"[dim]Moved:[/] [bold]{t['title']}[/] → [cyan]todo/[/]")
+            moved += 1
+    if not dry_run and moved > 0:
+        write_todos(todos)
 
     # Remove orphaned todos
     todos = read_todos()
@@ -1067,6 +1147,8 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
         if not notes_dir.is_dir():
             if dry_run:
                 stderr.print(f"[dim]Would remove todo:[/] [bold]{t['title']}[/] [dim]({t['id']})[/]")
+                stderr.print(f"  [dim]Missing dir:[/] {notes_dir}")
+                removed += 1
             else:
                 # Remove subtasks first
                 subtasks = [s for s in read_todos() if s.get("parent_id") == t["id"]]
@@ -1083,8 +1165,18 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
                 removed += 1
 
     if dry_run:
-        stderr.print(f"\n[dim]Dry run — no changes made. Run [cyan]td sync[/cyan] to apply.[/]")
-    elif created == 0 and removed == 0:
+        if created == 0 and removed == 0 and moved == 0:
+            stderr.print("[green]✓[/] Already in sync")
+        else:
+            parts = []
+            if created > 0:
+                parts.append(f"create {created}")
+            if removed > 0:
+                parts.append(f"remove {removed}")
+            if moved > 0:
+                parts.append(f"move {moved}")
+            stderr.print(f"\n[dim]Dry run — would {', '.join(parts)}. Run [cyan]td sync[/cyan] to apply.[/]")
+    elif created == 0 and removed == 0 and moved == 0:
         stderr.print("[green]✓[/] Already in sync")
     else:
         parts = []
@@ -1092,6 +1184,8 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
             parts.append(f"created {created}")
         if removed > 0:
             parts.append(f"removed {removed}")
+        if moved > 0:
+            parts.append(f"moved {moved}")
         stderr.print(f"[green]✓[/] Synced: {', '.join(parts)}")
 
 
