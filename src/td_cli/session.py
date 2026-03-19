@@ -203,6 +203,119 @@ def try_worktree(todo_id: str) -> None:
     console.print(f"[dim]Main repo is now on {try_branch}. Worktree is unchanged.[/]")
 
 
+# --- Take (bring try branch changes back to worktree) -----------------------
+
+def take_worktree(todo_id: str) -> None:
+    """Cherry-pick commits made on the try branch back into the worktree."""
+    repo = require_repo()
+    todo = get_todo(todo_id)
+    if not todo:
+        raise SystemExit(1)
+
+    wt_path = todo.get("worktree_path", "")
+    branch = todo.get("branch", "")
+    title = todo["title"]
+
+    if not wt_path:
+        console.print("[red]Error:[/] This todo has no worktree. 'take' only works with worktree sessions.")
+        raise SystemExit(1)
+
+    if not validate_worktree(wt_path):
+        console.print(f"[red]Error:[/] Worktree at {wt_path} is missing or invalid.")
+        raise SystemExit(1)
+
+    slug = slugify(title)
+    try_branch = f"try-{slug}"
+
+    # Verify try branch exists
+    if subprocess.run(
+        ["git", "-C", repo, "show-ref", "--verify", "--quiet", f"refs/heads/{try_branch}"],
+        capture_output=True,
+    ).returncode != 0:
+        console.print(f"[red]Error:[/] No try branch '{try_branch}' found. Run 'td try' first.")
+        raise SystemExit(1)
+
+    # Find the initial "try:" commit (first commit on the try branch after base)
+    try_commits = subprocess.run(
+        ["git", "-C", repo, "log", try_branch, "--format=%H %s", "--reverse"],
+        capture_output=True, text=True,
+    ).stdout.strip().splitlines()
+
+    if not try_commits:
+        console.print(f"[yellow]No commits[/] on {try_branch}.")
+        return
+
+    # The first commit with "try: " prefix is the initial td try commit
+    initial_hash = None
+    for line in try_commits:
+        parts = line.split(" ", 1)
+        if len(parts) == 2 and parts[1].startswith("try: "):
+            initial_hash = parts[0]
+            break
+
+    if not initial_hash:
+        console.print(f"[red]Error:[/] Could not find the initial 'try:' commit on {try_branch}.")
+        raise SystemExit(1)
+
+    # Get commits after the initial try commit
+    new_commits_output = subprocess.run(
+        ["git", "-C", repo, "log", f"{initial_hash}..{try_branch}", "--format=%H", "--reverse"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+
+    if not new_commits_output:
+        console.print(f"[yellow]No new commits[/] on {try_branch} beyond the initial try.")
+        return
+
+    new_commits = new_commits_output.splitlines()
+    console.print(f"[bold]Take:[/] {title}")
+    console.print(f"[dim]Cherry-picking {len(new_commits)} commit(s) from {try_branch} into {branch}[/]")
+
+    # Check for uncommitted changes in worktree
+    dirty = (
+        subprocess.run(["git", "-C", wt_path, "diff", "--quiet"], capture_output=True).returncode != 0
+        or subprocess.run(["git", "-C", wt_path, "diff", "--cached", "--quiet"], capture_output=True).returncode != 0
+    )
+    if dirty:
+        console.print("[red]Error:[/] Worktree has uncommitted changes. Commit or stash them first.")
+        raise SystemExit(1)
+
+    # Cherry-pick each commit
+    failed = False
+    picked = 0
+    for commit_hash in new_commits:
+        result = subprocess.run(
+            ["git", "-C", wt_path, "cherry-pick", commit_hash],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            console.print(f"[red]Error:[/] Cherry-pick failed for {commit_hash[:8]}.")
+            console.print(f"[dim]{result.stderr.strip()}[/]")
+            console.print(f"[dim]Resolve conflicts in {wt_path}, then run 'git cherry-pick --continue'.[/]")
+            failed = True
+            break
+        picked += 1
+
+    if not failed:
+        console.print(f"[green]✓[/] Cherry-picked {picked} commit(s) into {branch}")
+        if typer.confirm(f"Delete try branch '{try_branch}'?", default=True):
+            # Switch main repo off try branch if needed
+            current = subprocess.run(
+                ["git", "-C", repo, "branch", "--show-current"],
+                capture_output=True, text=True,
+            ).stdout.strip()
+            if current == try_branch:
+                base = "master"
+                if subprocess.run(
+                    ["git", "-C", repo, "show-ref", "--verify", "--quiet", "refs/heads/master"],
+                    capture_output=True,
+                ).returncode != 0:
+                    base = "main"
+                subprocess.run(["git", "-C", repo, "checkout", base], capture_output=True)
+            subprocess.run(["git", "-C", repo, "branch", "-D", try_branch], capture_output=True)
+            console.print(f"[dim]Deleted {try_branch}[/]")
+
+
 # --- Claude session launching -----------------------------------------------
 
 def launch_claude(todo_id: str, session_id: str = "") -> None:

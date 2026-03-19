@@ -160,14 +160,14 @@ def new(
     from td_cli.config import NOTES_DIR, QUIET
     from td_cli.data import (
         generate_id, notes_folder_name, read_todos, write_todos, now_iso,
-        get_todo,
+        get_todo, random_name,
     )
     from td_cli.ui import prompt_input
 
     title, backlog, child_of = _arg(title), _arg(backlog), _arg(child_of)
 
     if not title:
-        title = prompt_input("Todo title...")
+        title = prompt_input("Todo title...", default=random_name())
         if not title:
             raise typer.Abort()
 
@@ -263,8 +263,9 @@ def split(
     parent_wt = parent.get("worktree_path", "")
 
     if not title:
+        from td_cli.data import random_name
         stderr.print(f"[dim]Adding subtask to: {parent_title}[/]")
-        title = prompt_input("Subtask title...")
+        title = prompt_input("Subtask title...", default=random_name())
         if not title:
             raise typer.Abort()
 
@@ -951,6 +952,26 @@ def try_cmd(todo_id: str = typer.Argument(None)) -> None:
 
 
 # ---------------------------------------------------------------------------
+# td take [id]
+# ---------------------------------------------------------------------------
+
+@app.command("take", rich_help_panel=_NON_INTERACTIVE)
+def take_cmd(todo_id: str = typer.Argument(None)) -> None:
+    """Cherry-pick try branch changes back into the worktree."""
+    from td_cli.data import resolve_id
+    from td_cli.session import take_worktree
+    from td_cli.ui import pick_todo
+
+    if todo_id:
+        todo_id = resolve_id(todo_id)
+    else:
+        todo_id = pick_todo("Select todo to take changes for", "take ❯ ")
+        if not todo_id:
+            raise typer.Abort()
+    take_worktree(todo_id)
+
+
+# ---------------------------------------------------------------------------
 # td browse
 # ---------------------------------------------------------------------------
 
@@ -1118,7 +1139,8 @@ def find(query: str = typer.Argument("")) -> None:
         if not tid:
             raise typer.Abort()
     else:
-        title = prompt_input("Todo title for this session...")
+        from td_cli.data import random_name
+        title = prompt_input("Todo title for this session...", default=random_name())
         if not title:
             raise typer.Abort()
         import os
@@ -1372,10 +1394,18 @@ def update() -> None:
 # td help — delegates to --help
 # ---------------------------------------------------------------------------
 
+_LOGO = r"""
+  ▄▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄   ▄▄▄▄▄
+    █    █   █ █    █ █   █
+    █    █   █ █    █ █   █
+    █    █▄▄▄█ █▄▄▄▀  █▄▄▄█
+"""
+
+
 @app.command("help", rich_help_panel=_ADMIN)
 def help_cmd(ctx: typer.Context) -> None:
     """Show usage."""
-    # Delegate to typer's auto-generated --help
+    stderr.print(f"[bold]{_LOGO}[/]")
     ctx.parent.info_name = "td"  # type: ignore[union-attr]
     typer.echo(ctx.parent.get_help())  # type: ignore[union-attr]
 
@@ -1386,10 +1416,10 @@ def help_cmd(ctx: typer.Context) -> None:
 
 def _select_todo(todo_id: str) -> None:
     """Show action menu for a selected todo."""
-    from td_cli.config import open_notes, open_url
+    from td_cli.config import open_notes, open_url, REPO_ROOT
     from td_cli.data import get_todo, read_todos, write_todos, now_iso
     from td_cli.git import linear_ticket_url, github_branch_url
-    from td_cli.session import start_session, try_worktree
+    from td_cli.session import start_session, try_worktree, take_worktree
     from td_cli.ui import action_menu
 
     todo = get_todo(todo_id)
@@ -1440,6 +1470,14 @@ def _select_todo(todo_id: str) -> None:
         options.append("Start Claude (new worktree)")
     if wt_path and branch:
         options.append("Try on main repo")
+        # Check if a try branch exists for "take"
+        from td_cli.data import slugify
+        _try_branch = f"try-{slugify(title)}"
+        if REPO_ROOT and subprocess.run(
+            ["git", "-C", REPO_ROOT, "show-ref", "--verify", "--quiet", f"refs/heads/{_try_branch}"],
+            capture_output=True,
+        ).returncode == 0:
+            options.append("Take from try branch")
     options.append("Mark as done")
     options.append("Move to TODO" if group == "backlog" else "Move to backlog")
     options.append("Add subtask")
@@ -1463,6 +1501,8 @@ def _select_todo(todo_id: str) -> None:
         start_session(todo_id, "current-dir")
     elif choice == "Try on main repo":
         try_worktree(todo_id)
+    elif choice == "Take from try branch":
+        take_worktree(todo_id)
     elif choice == "Mark as done":
         _archive_todo(todo_id)
     elif choice == "Move to TODO":

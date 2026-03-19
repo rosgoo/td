@@ -15,7 +15,7 @@ Minimal task and session manager for agentic coding.
 - **`td do`** — create a todo and drop into a Claude session directly (run with no name to get a random NYC-inspired name)
 - **`/td` slash command** — manage todos from inside any Claude Code session
 - **Git worktree isolation** — optionally spin up a dedicated worktree and branch per todo, keeping work separated
-- **`td try`** — test worktree changes on your main repo without switching directories, reinstalling dependencies, or rebuilding
+- **`td try` / `td take`** — test worktree changes on your main repo, then cherry-pick fixes back into the worktree
 - **Linear & GitHub linking** — attach tickets, PRs, and branches to todos; open them from the picker
 - **Pre-compact hook** — automatically snapshots conversation context into `plan.md` before Claude compacts, so notes are never lost
 - **Non-interactive CLI** — every action has an ID-addressable command, so Claude (or scripts) can manage todos without a UI
@@ -221,6 +221,13 @@ Subtasks inherit their parent's branch, worktree, and Linear ticket. Metadata th
 
 If you create a folder in `~/td/todo/` manually (e.g. from Obsidian), `td sync` picks it up and creates a todo for it. If you delete a folder, `td sync` removes the orphaned todo. Nested subdirectories become subtasks automatically.
 
+### Worktrees
+
+| Command | Description |
+|---------|-------------|
+| `td try [id]` | Apply worktree diff to a `try-<slug>` branch on main repo |
+| `td take [id]` | Cherry-pick try branch commits back into the worktree |
+
 ### Other
 
 | Command | Description |
@@ -236,7 +243,9 @@ If you create a folder in `~/td/todo/` manually (e.g. from Obsidian), `td sync` 
 
 Todos can optionally use [git worktrees](https://git-scm.com/docs/git-worktree) for branch isolation. When you choose "Start Claude (new worktree)" from the picker, a worktree is created at `.claude/worktrees/<slug>` with a branch named `todo/<slug>`.
 
-### `td try`
+This keeps each task's changes on a separate branch in a separate directory, so you can work on multiple things without stashing or switching branches in your main repo.
+
+### `td try` — push changes out for testing
 
 Use `td try` to test worktree changes on your main repo without leaving the worktree. It diffs all changes from the worktree branch against main and applies them as a single commit on a `try-<slug>` branch in the main repo.
 
@@ -245,6 +254,33 @@ This avoids the pain of switching back to main just to test — no reinstalling 
 ```bash
 td try           # pick a todo from the picker
 td try abc123    # or pass an ID directly
+```
+
+### `td take` — pull changes back from try
+
+After testing on the try branch, you may have made fixes or adjustments (manually or via Claude). Use `td take` to bring those changes back into the worktree.
+
+It finds commits made on the `try-<slug>` branch after the initial `td try` commit and cherry-picks them into the worktree branch. Only the new work comes back — the original changes that were already in the worktree are skipped.
+
+```bash
+td take          # pick a todo from the picker
+td take abc123   # or pass an ID directly
+```
+
+After a successful take, you're prompted to delete the try branch to keep things clean.
+
+### Typical workflow
+
+```
+worktree (todo/my-feature)          main repo
+        |                                |
+        |--- td try --->  try-my-feature (changes applied)
+        |                       |
+        |                    fix tests, adjust code
+        |                       |
+        |<-- td take ---  cherry-pick fixes back
+        |
+     continue working
 ```
 
 ### Lifecycle

@@ -26,6 +26,8 @@ td delete <id> --force      # Delete a todo
 td get <id>                 # Print todo as JSON (for inspecting details)
 td show <id>                # Print the path to a todo's plan.md
 td list                     # List all active todos
+td try <id>                 # Apply worktree diff to a try branch on main repo
+td take <id>                # Cherry-pick try branch changes back into worktree
 td find <query>             # Search todos by title
 ```
 
