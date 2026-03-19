@@ -16,7 +16,10 @@ td do "title"               # Create a todo and start Claude immediately
 td do -c <parent> "title"   # Create a subtask and start Claude immediately
 td done <id>                # Mark a todo as done
 td split <parent-id> "title" # Add a subtask under a parent todo
-td note <id> "text"         # Append a note to a todo's plan.md
+td plan <id>                # Print the plan contents
+td plan <id> "text"         # Append text to a todo's plan.md
+td plan <id> -r <file>      # Replace plan.md with an existing file
+td plan <id> -o             # Open plan.md in your editor
 td link <id> <url|branch>   # Link a Linear ticket, GitHub PR, branch name, or file
 td rename <id> "new title"  # Rename a todo
 td delete <id> --force      # Delete a todo
@@ -31,7 +34,8 @@ td find <query>             # Search todos by title
 - Run `td list` to discover todo IDs — IDs are human-readable slugs (e.g., `fix-document-audit`). The list shows the full hierarchy (parent → subtask tree), not a flat list.
 - IDs can be shortened to a unique prefix (e.g., `td done fix-doc` instead of the full ID)
 - When the user asks to create, complete, or manage tasks, use `td` commands
-- Use `td note` to record important decisions or context on the current todo
+- Use `td plan <id> "text"` to append important decisions or context to the current todo's plan
+- Use `td plan <id> --replace <file>` to update a todo's plan from a file — useful when a plan has been written or revised externally (e.g., by planning-mcp) and you want to copy it into the todo's plan.md
 - Use `td link` to attach relevant URLs (PRs, tickets) or branch names to todos — accepts Linear URLs, GitHub PR/branch URLs, local branch names (e.g. `feature/my-branch`), or file paths
 - Use `td get <id>` to inspect a todo's full details (branch, worktree, links, etc.)
 - Read a todo's `plan.md` (via `td show <id>`) to understand its full context. **For subtasks, also check the parent's `plan.md`** — parent plans often contain high-level context, constraints, and decisions that apply to all subtasks. Walk up the hierarchy (`td get <id>` shows `parent_id`) and read each ancestor's plan.

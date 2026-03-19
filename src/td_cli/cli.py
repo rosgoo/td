@@ -527,12 +527,19 @@ def get(todo_id: str = typer.Argument(None)) -> None:
 
 
 # ---------------------------------------------------------------------------
-# td note <id> "text"
+# td plan <id> [text] [--update] [--replace <file>] [-o]
 # ---------------------------------------------------------------------------
 
 @app.command(rich_help_panel=_NON_INTERACTIVE)
-def note(todo_id: str, text: str) -> None:
-    """Append text to a todo's plan.md."""
+def plan(
+    todo_id: str,
+    text: str = typer.Argument(None),
+    update: bool = typer.Option(False, "--update", "-u", help="Append text to the plan."),
+    replace: str = typer.Option(None, "--replace", "-r", help="Replace plan with contents of the given file."),
+    open_plan: bool = typer.Option(False, "-o", "--open", help="Open plan.md in your editor."),
+) -> None:
+    """View, update, or replace a todo's plan.md."""
+    import shutil
     from td_cli.data import resolve_id, get_todo, ensure_notes
 
     todo_id = resolve_id(todo_id)
@@ -542,9 +549,30 @@ def note(todo_id: str, text: str) -> None:
     notes_path = todo.get("notes_path", "")
     if not notes_path or not os.path.isfile(notes_path):
         notes_path = ensure_notes(todo_id, todo["title"])
-    with open(notes_path, "a") as f:
-        f.write(f"\n{text}\n")
-    stderr.print(f"[green]✓[/] Appended to [dim]{notes_path}[/]")
+
+    if replace:
+        src = os.path.expanduser(replace)
+        if not os.path.isfile(src):
+            stderr.print(f"[red]Error:[/] file not found: {src}")
+            raise typer.Exit(1)
+        shutil.copy2(src, notes_path)
+        stderr.print(f"[green]✓[/] Replaced [dim]{notes_path}[/] with [dim]{src}[/]")
+    elif update or text:
+        if not text:
+            stderr.print("[red]Error:[/] text is required with --update")
+            raise typer.Exit(1)
+        with open(notes_path, "a") as f:
+            f.write(f"\n{text}\n")
+        stderr.print(f"[green]✓[/] Appended to [dim]{notes_path}[/]")
+    elif open_plan:
+        pass  # handled below
+    else:
+        # Default: print the plan contents
+        typer.echo(Path(notes_path).read_text())
+
+    if open_plan:
+        editor = os.environ.get("EDITOR", "vim")
+        subprocess.run([editor, notes_path])
 
 
 # ---------------------------------------------------------------------------

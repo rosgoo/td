@@ -170,12 +170,15 @@ All commands accept an optional `[id]` (or ID prefix) to skip the interactive pi
 | `td list` | List all active todos |
 | `td archive` | Show completed todos |
 
-### Notes
+### Plans & Notes
 
 | Command | Description |
 |---------|-------------|
 | `td edit [id]` | Open notes in your editor |
-| `td note <id> "text"` | Append text to a todo's notes (non-interactive) |
+| `td plan <id>` | Print the plan contents |
+| `td plan <id> "text"` | Append text to a todo's plan (non-interactive) |
+| `td plan <id> --replace <file>` | Replace plan.md with an existing file |
+| `td plan <id> -o` | Open plan.md in your editor |
 | `td show [id]` | Print the absolute path to plan.md |
 
 ### Linking
@@ -263,7 +266,7 @@ Claude can also use `td` commands directly to manage work:
 
 ```bash
 td new "Refactor auth middleware"
-td note abc123 "Decided to use JWT instead of sessions"
+td plan abc123 "Decided to use JWT instead of sessions"
 td link abc123 https://github.com/org/repo/pull/456
 td done abc123
 td delete abc123 --force

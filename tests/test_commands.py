@@ -99,15 +99,45 @@ class TestGet:
         assert r.returncode != 0
 
 
-class TestNote:
-    def test_appends_note(self, td, isolated_env):
-        td("new", "Note test")
+class TestPlan:
+    def test_appends_text_with_update(self, td, isolated_env):
+        td("new", "Plan test")
         todo_id = todos_json(isolated_env)[0]["id"]
         notes_path = todos_json(isolated_env)[0]["notes_path"]
 
-        td("note", todo_id, "Appended note text")
+        td("plan", todo_id, "--update", "Appended note text")
         content = Path(notes_path).read_text()
         assert "Appended note text" in content
+
+    def test_appends_text_positional(self, td, isolated_env):
+        td("new", "Plan positional test")
+        todo_id = todos_json(isolated_env)[0]["id"]
+        notes_path = todos_json(isolated_env)[0]["notes_path"]
+
+        td("plan", todo_id, "Appended positional text")
+        content = Path(notes_path).read_text()
+        assert "Appended positional text" in content
+
+    def test_replace_with_file(self, td, isolated_env, tmp_path):
+        td("new", "Replace test")
+        todo_id = todos_json(isolated_env)[0]["id"]
+        notes_path = todos_json(isolated_env)[0]["notes_path"]
+
+        src = tmp_path / "new_plan.md"
+        src.write_text("# Replaced Plan\n\nNew content here.\n")
+
+        td("plan", todo_id, "--replace", str(src))
+        content = Path(notes_path).read_text()
+        assert content == "# Replaced Plan\n\nNew content here.\n"
+
+    def test_prints_plan_by_default(self, td, isolated_env):
+        td("new", "Print test")
+        todo_id = todos_json(isolated_env)[0]["id"]
+        notes_path = todos_json(isolated_env)[0]["notes_path"]
+
+        r = td("plan", todo_id)
+        plan_content = Path(notes_path).read_text()
+        assert plan_content.strip() in r.stdout.strip()
 
 
 class TestShow:
