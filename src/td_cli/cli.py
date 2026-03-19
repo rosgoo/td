@@ -27,6 +27,11 @@ app = typer.Typer(
 stderr = Console(stderr=True)
 
 
+def _arg(val):  # noqa: ANN001
+    """Normalise a typer Argument/Option default to None when called directly."""
+    return val if isinstance(val, (str, bool, int, float)) else None
+
+
 def _version_str() -> str:
     here = Path(__file__).resolve().parent
     for parent in [here, here.parent, here.parent.parent]:
@@ -159,6 +164,8 @@ def new(
     )
     from td_cli.ui import prompt_input
 
+    title, backlog, child_of = _arg(title), _arg(backlog), _arg(child_of)
+
     if not title:
         title = prompt_input("Todo title...")
         if not title:
@@ -237,6 +244,8 @@ def split(
         resolve_id, get_todo,
     )
     from td_cli.ui import pick_todo, prompt_input
+
+    parent_id, title = _arg(parent_id), _arg(title)
 
     if not parent_id:
         parent_id = pick_todo("Select parent todo", "add ❯ ")
@@ -626,6 +635,8 @@ def rename(todo_id: str = typer.Argument(None), new_title: str = typer.Argument(
     from td_cli.config import NOTES_DIR
     from td_cli.data import resolve_id, get_todo, read_todos, write_todos, notes_folder_name
     from td_cli.ui import pick_todo, prompt_input
+
+    todo_id, new_title = _arg(todo_id), _arg(new_title)
 
     if not todo_id:
         todo_id = pick_todo("Select todo to rename", "rename ❯ ")
@@ -1090,7 +1101,7 @@ def find(query: str = typer.Argument("")) -> None:
         import contextlib
         f = StringIO()
         with contextlib.redirect_stdout(f):
-            new(title=title)
+            new(title=title, child_of=None)
         tid = f.getvalue().strip()
         if old_quiet:
             os.environ["TODO_QUIET"] = old_quiet
@@ -1452,6 +1463,7 @@ def _select_todo(todo_id: str) -> None:
 
 def _picker() -> None:
     """Main interactive picker loop."""
+    from td_cli.data import random_name
     from td_cli.ui import check_fzf, format_fzf_lines, prompt_input, FZF
 
     check_fzf()
@@ -1494,9 +1506,9 @@ def _picker() -> None:
 
         selected_id = selection.split("\t")[0]
         if selected_id == "__new__":
-            title = prompt_input("Todo title...")
+            title = prompt_input("Todo title...", default=random_name())
             if title:
-                new(title=title)
+                new(title=title, child_of=None)
             continue
         if selected_id == "__sep__":
             continue
