@@ -3,8 +3,7 @@
 import json
 import os
 import subprocess
-import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -33,7 +32,8 @@ def _arg(val):  # noqa: ANN001
 
 
 def _version_str() -> str:
-    from importlib.metadata import version, PackageNotFoundError
+    from importlib.metadata import PackageNotFoundError, version
+
     try:
         return version("td")
     except PackageNotFoundError:
@@ -44,11 +44,20 @@ def _version_str() -> str:
 # Callbacks and version
 # ---------------------------------------------------------------------------
 
+
 @app.callback()
 def main(
     ctx: typer.Context,
-    quiet: bool = typer.Option(False, "-q", "--quiet", envvar="TODO_QUIET", help="Suppress info output, print only IDs."),
-    no_color: bool = typer.Option(False, "--no-color", envvar="NO_COLOR", help="Disable colored output."),
+    quiet: bool = typer.Option(
+        False,
+        "-q",
+        "--quiet",
+        envvar="TODO_QUIET",
+        help="Suppress info output, print only IDs.",
+    ),
+    no_color: bool = typer.Option(
+        False, "--no-color", envvar="NO_COLOR", help="Disable colored output."
+    ),
 ) -> None:
     """td — Minimal task manager for Claude Code."""
     if quiet:
@@ -56,6 +65,7 @@ def main(
     if no_color:
         os.environ["NO_COLOR"] = "1"
     from td_cli.data import ensure_setup
+
     ensure_setup()
     if ctx.invoked_subcommand is None:
         _picker()
@@ -64,6 +74,7 @@ def main(
 # ---------------------------------------------------------------------------
 # td do [-n "title"]
 # ---------------------------------------------------------------------------
+
 
 def _resolve_parent(child_of: str) -> str:
     """Resolve -c value to a parent ID. '?' triggers picker."""
@@ -81,13 +92,23 @@ def _resolve_parent(child_of: str) -> str:
 @app.command("do", rich_help_panel=_INTERACTIVE)
 def do_cmd(
     title: str = typer.Argument(None),
-    child_of: str = typer.Option(None, "-c", "--child-of", help="Create as subtask (parent ID/name, or '?' to pick)."),
+    child_of: str = typer.Option(
+        None,
+        "-c",
+        "--child-of",
+        help="Create as subtask (parent ID/name, or '?' to pick).",
+    ),
 ) -> None:
     """Create a todo and start Claude immediately."""
     from td_cli.config import NOTES_DIR
     from td_cli.data import (
-        generate_id, notes_folder_name, read_todos, write_todos, now_iso,
-        random_name, get_todo,
+        generate_id,
+        get_todo,
+        notes_folder_name,
+        now_iso,
+        random_name,
+        read_todos,
+        write_todos,
     )
     from td_cli.session import start_session
     from td_cli.ui import prompt_input
@@ -111,13 +132,17 @@ def do_cmd(
     if parent:
         parent_notes = parent.get("notes_path", "")
         parent_notes_dir = Path(parent_notes).parent if parent_notes else NOTES_DIR
-        notes_path = parent_notes_dir / notes_folder_name(todo_id, title, parent_notes_dir)
+        notes_path = parent_notes_dir / notes_folder_name(
+            todo_id, title, parent_notes_dir
+        )
     else:
         notes_path = NOTES_DIR / notes_folder_name(todo_id, title)
 
     notes_path.mkdir(parents=True, exist_ok=True)
     plan = notes_path / "plan.md"
-    plan_content = f"# {title}\n\nCreated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+    plan_content = (
+        f"# {title}\n\nCreated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+    )
     if parent:
         plan_content += f"Parent: {parent['title']}\n"
     plan_content += "\n## Plan\n\n"
@@ -126,11 +151,14 @@ def do_cmd(
     now = now_iso()
     todos = read_todos()
     entry = {
-        "id": todo_id, "title": title, "created_at": now,
+        "id": todo_id,
+        "title": title,
+        "created_at": now,
         "branch": parent.get("branch", "") if parent else "",
         "worktree_path": parent.get("worktree_path", "") if parent else "",
         "notes_path": str(plan),
-        "status": "active", "group": "todo",
+        "status": "active",
+        "group": "todo",
     }
     if parent_id:
         entry["parent_id"] = parent_id
@@ -138,7 +166,9 @@ def do_cmd(
     write_todos(todos)
 
     if parent:
-        stderr.print(f"[green]✓[/] Created subtask: [bold]{title}[/]  [dim]{todo_id}[/]")
+        stderr.print(
+            f"[green]✓[/] Created subtask: [bold]{title}[/]  [dim]{todo_id}[/]"
+        )
         stderr.print(f"  [dim]Parent: {parent['title']}[/]")
     else:
         stderr.print(f"[green]✓[/] Created: [bold]{title}[/]  [dim]{todo_id}[/]")
@@ -149,17 +179,28 @@ def do_cmd(
 # td new [-b] "title"
 # ---------------------------------------------------------------------------
 
+
 @app.command(rich_help_panel=_NON_INTERACTIVE)
 def new(
     title: str = typer.Argument(None),
     backlog: bool = typer.Option(False, "-b", "--backlog"),
-    child_of: str = typer.Option(None, "-c", "--child-of", help="Create as subtask (parent ID/name, or '?' to pick)."),
+    child_of: str = typer.Option(
+        None,
+        "-c",
+        "--child-of",
+        help="Create as subtask (parent ID/name, or '?' to pick).",
+    ),
 ) -> None:
     """Create a new todo."""
     from td_cli.config import NOTES_DIR, QUIET
     from td_cli.data import (
-        generate_id, notes_folder_name, read_todos, write_todos, now_iso,
-        get_todo, random_name,
+        generate_id,
+        get_todo,
+        notes_folder_name,
+        now_iso,
+        random_name,
+        read_todos,
+        write_todos,
     )
     from td_cli.ui import prompt_input
 
@@ -185,14 +226,18 @@ def new(
     if parent:
         parent_notes = parent.get("notes_path", "")
         parent_notes_dir = Path(parent_notes).parent if parent_notes else NOTES_DIR
-        notes_path = parent_notes_dir / notes_folder_name(todo_id, title, parent_notes_dir)
+        notes_path = parent_notes_dir / notes_folder_name(
+            todo_id, title, parent_notes_dir
+        )
     else:
         notes_path = NOTES_DIR / notes_folder_name(todo_id, title)
 
     # Create plan.md
     notes_path.mkdir(parents=True, exist_ok=True)
     plan = notes_path / "plan.md"
-    plan_content = f"# {title}\n\nCreated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+    plan_content = (
+        f"# {title}\n\nCreated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+    )
     if parent:
         plan_content += f"Parent: {parent['title']}\n"
     plan_content += "\n## Plan\n\n"
@@ -220,16 +265,23 @@ def new(
     else:
         group_label = " [dim](backlog)[/]" if group == "backlog" else ""
         if parent:
-            stderr.print(f"[green]✓[/] Created subtask: [bold]{title}[/]{group_label}  [dim]{todo_id}[/]")
+            stderr.print(
+                f"[green]✓[/] Created subtask: [bold]{title}[/]{group_label}  [dim]{todo_id}[/]"
+            )
             stderr.print(f"  [dim]Parent: {parent['title']}[/]")
         else:
-            stderr.print(f"[green]✓[/] Created: [bold]{title}[/]{group_label}  [dim]{todo_id}[/]")
-            stderr.print(f"  [dim]Next: td edit {todo_id}  ·  td link {todo_id}  ·  td split {todo_id}[/]")
+            stderr.print(
+                f"[green]✓[/] Created: [bold]{title}[/]{group_label}  [dim]{todo_id}[/]"
+            )
+            stderr.print(
+                f"  [dim]Next: td edit {todo_id}  ·  td link {todo_id}  ·  td split {todo_id}[/]"
+            )
 
 
 # ---------------------------------------------------------------------------
 # td split [parent-id] ["title"]
 # ---------------------------------------------------------------------------
+
 
 @app.command(rich_help_panel=_NON_INTERACTIVE)
 def split(
@@ -239,8 +291,13 @@ def split(
     """Create a subtask under a parent todo."""
     from td_cli.config import NOTES_DIR, QUIET
     from td_cli.data import (
-        generate_id, notes_folder_name, read_todos, write_todos, now_iso,
-        resolve_id, get_todo,
+        generate_id,
+        get_todo,
+        notes_folder_name,
+        now_iso,
+        read_todos,
+        resolve_id,
+        write_todos,
     )
     from td_cli.ui import pick_todo, prompt_input
 
@@ -263,6 +320,7 @@ def split(
 
     if not title:
         from td_cli.data import random_name
+
         stderr.print(f"[dim]Adding subtask to: {parent_title}[/]")
         title = prompt_input("Subtask title...", default=random_name())
         if not title:
@@ -283,12 +341,18 @@ def split(
 
     now = now_iso()
     todos = read_todos()
-    todos.append({
-        "id": todo_id, "title": title, "created_at": now,
-        "branch": parent_branch, "worktree_path": parent_wt,
-        "notes_path": str(plan), "status": "active",
-        "parent_id": parent_id,
-    })
+    todos.append(
+        {
+            "id": todo_id,
+            "title": title,
+            "created_at": now,
+            "branch": parent_branch,
+            "worktree_path": parent_wt,
+            "notes_path": str(plan),
+            "status": "active",
+            "parent_id": parent_id,
+        }
+    )
     write_todos(todos)
 
     if QUIET:
@@ -301,6 +365,7 @@ def split(
 # ---------------------------------------------------------------------------
 # td done [id]
 # ---------------------------------------------------------------------------
+
 
 def _archive_todo(todo_id: str) -> None:
     """Mark a todo and its descendants as done, with optional cleanup."""
@@ -316,6 +381,7 @@ def _archive_todo(todo_id: str) -> None:
 
     # Collect all descendant IDs
     todos = read_todos()
+
     def descendants(pid: str) -> list[str]:
         kids = [t["id"] for t in todos if t.get("parent_id") == pid]
         result = list(kids)
@@ -337,13 +403,16 @@ def _archive_todo(todo_id: str) -> None:
             dest = DONE_DIR / notes_dir.name
             if dest.exists():
                 import shutil
+
                 shutil.rmtree(dest)
             notes_dir.rename(dest)
             # Update notes_path for this todo and all descendants
             old_prefix = str(notes_dir)
             new_prefix = str(dest)
             for t in todos:
-                if t["id"] in all_ids and t.get("notes_path", "").startswith(old_prefix):
+                if t["id"] in all_ids and t.get("notes_path", "").startswith(
+                    old_prefix
+                ):
                     t["notes_path"] = t["notes_path"].replace(old_prefix, new_prefix, 1)
 
     write_todos(todos)
@@ -366,10 +435,22 @@ def _archive_todo(todo_id: str) -> None:
                         capture_output=True,
                     )
                     stderr.print("[dim]Removed worktree[/]")
-                if branch and subprocess.run(
-                    ["git", "-C", repo, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
-                    capture_output=True,
-                ).returncode == 0:
+                if (
+                    branch
+                    and subprocess.run(
+                        [
+                            "git",
+                            "-C",
+                            repo,
+                            "show-ref",
+                            "--verify",
+                            "--quiet",
+                            f"refs/heads/{branch}",
+                        ],
+                        capture_output=True,
+                    ).returncode
+                    == 0
+                ):
                     subprocess.run(
                         ["git", "-C", repo, "branch", "-D", branch],
                         capture_output=True,
@@ -396,11 +477,12 @@ def done(todo_id: str = typer.Argument(None)) -> None:
 # td edit [id]
 # ---------------------------------------------------------------------------
 
+
 @app.command(rich_help_panel=_INTERACTIVE)
 def edit(todo_id: str = typer.Argument(None)) -> None:
     """Open plan.md in editor."""
     from td_cli.config import open_notes
-    from td_cli.data import resolve_id, get_todo, ensure_notes
+    from td_cli.data import ensure_notes, get_todo, resolve_id
     from td_cli.ui import pick_todo
 
     if todo_id:
@@ -422,6 +504,7 @@ def edit(todo_id: str = typer.Argument(None)) -> None:
 # ---------------------------------------------------------------------------
 # td list [--json]
 # ---------------------------------------------------------------------------
+
 
 @app.command("list", rich_help_panel=_NON_INTERACTIVE)
 def list_cmd(json_mode: bool = typer.Option(False, "--json")) -> None:
@@ -465,7 +548,9 @@ def list_cmd(json_mode: bool = typer.Option(False, "--json")) -> None:
                 d = _depth(t)
                 indent = "   " * d
                 cur_icon = icon if d == 0 else "[dim]└─[/]"
-                stderr.print(f"\n  {indent}{cur_icon} [bold]{t['title']}[/]  [dim]{t['id']}[/]")
+                stderr.print(
+                    f"\n  {indent}{cur_icon} [bold]{t['title']}[/]  [dim]{t['id']}[/]"
+                )
                 parts = []
                 if t.get("linear_ticket"):
                     parts.append(f"[magenta]{t['linear_ticket']}[/]")
@@ -480,21 +565,35 @@ def list_cmd(json_mode: bool = typer.Option(False, "--json")) -> None:
                 stderr.print(f"  {indent}    [dim]{t.get('created_at', '')[:10]}[/]")
 
     todo_roots = sorted(
-        [t for t in todos if not t.get("parent_id") and t.get("group", "todo") == "todo"],
-        key=lambda t: t.get("last_opened_at") or t.get("created_at", ""), reverse=True,
+        [
+            t
+            for t in todos
+            if not t.get("parent_id") and t.get("group", "todo") == "todo"
+        ],
+        key=lambda t: t.get("last_opened_at") or t.get("created_at", ""),
+        reverse=True,
     )
     backlog_roots = sorted(
-        [t for t in todos if not t.get("parent_id") and t.get("group", "todo") == "backlog"],
-        key=lambda t: t.get("last_opened_at") or t.get("created_at", ""), reverse=True,
+        [
+            t
+            for t in todos
+            if not t.get("parent_id") and t.get("group", "todo") == "backlog"
+        ],
+        key=lambda t: t.get("last_opened_at") or t.get("created_at", ""),
+        reverse=True,
     )
 
     if todo_roots:
-        stderr.print(f"\n  [bold]TODO[/] [dim]({len([t for t in todos if t.get('group', 'todo') == 'todo'])})[/]")
+        stderr.print(
+            f"\n  [bold]TODO[/] [dim]({len([t for t in todos if t.get('group', 'todo') == 'todo'])})[/]"
+        )
         stderr.print(f"  [dim]{'─' * 50}[/]")
         _section(todo_roots, "[green]◉[/]")
 
     if backlog_roots:
-        stderr.print(f"\n  [dim]Backlog[/] [dim]({len([t for t in todos if t.get('group', 'todo') == 'backlog'])})[/]")
+        stderr.print(
+            f"\n  [dim]Backlog[/] [dim]({len([t for t in todos if t.get('group', 'todo') == 'backlog'])})[/]"
+        )
         stderr.print(f"  [dim]{'─' * 50}[/]")
         _section(backlog_roots, "[dim]○[/]")
 
@@ -504,6 +603,7 @@ def list_cmd(json_mode: bool = typer.Option(False, "--json")) -> None:
 # ---------------------------------------------------------------------------
 # td archive
 # ---------------------------------------------------------------------------
+
 
 @app.command(rich_help_panel=_NON_INTERACTIVE)
 def archive() -> None:
@@ -533,10 +633,11 @@ def archive() -> None:
 # td get <id>
 # ---------------------------------------------------------------------------
 
+
 @app.command(rich_help_panel=_NON_INTERACTIVE)
 def get(todo_id: str = typer.Argument(None)) -> None:
     """Print todo as JSON."""
-    from td_cli.data import resolve_id, get_todo
+    from td_cli.data import get_todo, resolve_id
 
     if not todo_id:
         raise typer.BadParameter("td get requires an ID")
@@ -549,17 +650,25 @@ def get(todo_id: str = typer.Argument(None)) -> None:
 # td plan <id> [text] [--update] [--replace <file>] [-o]
 # ---------------------------------------------------------------------------
 
+
 @app.command(rich_help_panel=_NON_INTERACTIVE)
 def plan(
     todo_id: str,
     text: str = typer.Argument(None),
-    update: bool = typer.Option(False, "--update", "-u", help="Append text to the plan."),
-    replace: str = typer.Option(None, "--replace", "-r", help="Replace plan with contents of the given file."),
-    open_plan: bool = typer.Option(False, "-o", "--open", help="Open plan.md in your editor."),
+    update: bool = typer.Option(
+        False, "--update", "-u", help="Append text to the plan."
+    ),
+    replace: str = typer.Option(
+        None, "--replace", "-r", help="Replace plan with contents of the given file."
+    ),
+    open_plan: bool = typer.Option(
+        False, "-o", "--open", help="Open plan.md in your editor."
+    ),
 ) -> None:
     """View, update, or replace a todo's plan.md."""
     import shutil
-    from td_cli.data import resolve_id, get_todo, ensure_notes
+
+    from td_cli.data import ensure_notes, get_todo, resolve_id
 
     todo_id = resolve_id(todo_id)
     todo = get_todo(todo_id)
@@ -598,10 +707,11 @@ def plan(
 # td show [id]
 # ---------------------------------------------------------------------------
 
+
 @app.command(rich_help_panel=_NON_INTERACTIVE)
 def show(todo_id: str = typer.Argument(None)) -> None:
     """Print the plan.md path for a todo."""
-    from td_cli.data import resolve_id, get_todo, ensure_notes
+    from td_cli.data import ensure_notes, get_todo, resolve_id
     from td_cli.ui import pick_todo
 
     if todo_id:
@@ -623,10 +733,12 @@ def show(todo_id: str = typer.Argument(None)) -> None:
 # td bump [id]
 # ---------------------------------------------------------------------------
 
+
 def _bump_group(todo_id: str, new_group: str) -> None:
     from td_cli.data import get_todo, read_todos, write_todos
 
     todos = read_todos()
+
     def descendants(pid: str) -> list[str]:
         kids = [t["id"] for t in todos if t.get("parent_id") == pid]
         result = list(kids)
@@ -655,7 +767,7 @@ def _bump_group(todo_id: str, new_group: str) -> None:
 @app.command(rich_help_panel=_NON_INTERACTIVE)
 def bump(todo_id: str = typer.Argument(None)) -> None:
     """Toggle a todo between TODO and backlog."""
-    from td_cli.data import resolve_id, get_todo
+    from td_cli.data import get_todo, resolve_id
     from td_cli.ui import pick_todo
 
     if not todo_id:
@@ -676,11 +788,20 @@ def bump(todo_id: str = typer.Argument(None)) -> None:
 # td rename [id] ["new title"]
 # ---------------------------------------------------------------------------
 
+
 @app.command(rich_help_panel=_NON_INTERACTIVE)
-def rename(todo_id: str = typer.Argument(None), new_title: str = typer.Argument(None)) -> None:
+def rename(
+    todo_id: str = typer.Argument(None), new_title: str = typer.Argument(None)
+) -> None:
     """Rename a todo."""
     from td_cli.config import NOTES_DIR
-    from td_cli.data import resolve_id, get_todo, read_todos, write_todos, notes_folder_name
+    from td_cli.data import (
+        get_todo,
+        notes_folder_name,
+        read_todos,
+        resolve_id,
+        write_todos,
+    )
     from td_cli.ui import pick_todo, prompt_input
 
     todo_id, new_title = _arg(todo_id), _arg(new_title)
@@ -732,11 +853,14 @@ def rename(todo_id: str = typer.Argument(None), new_title: str = typer.Argument(
 # td delete [id] [--force]
 # ---------------------------------------------------------------------------
 
+
 @app.command(rich_help_panel=_NON_INTERACTIVE)
-def delete(todo_id: str = typer.Argument(None), force: bool = typer.Option(False, "--force")) -> None:
+def delete(
+    todo_id: str = typer.Argument(None), force: bool = typer.Option(False, "--force")
+) -> None:
     """Delete a todo and all related data."""
     from td_cli.config import REPO_ROOT
-    from td_cli.data import DATA_DIR, resolve_id, get_todo, read_todos, write_todos
+    from td_cli.data import DATA_DIR, get_todo, read_todos, resolve_id, write_todos
     from td_cli.ui import pick_todo
 
     if not todo_id:
@@ -773,17 +897,31 @@ def delete(todo_id: str = typer.Argument(None), force: bool = typer.Option(False
         stderr.print("[dim]Removed worktree[/]")
 
     if branch and not branch.startswith("http") and repo:
-        if subprocess.run(
-            ["git", "-C", repo, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
-            capture_output=True,
-        ).returncode == 0:
-            subprocess.run(["git", "-C", repo, "branch", "-D", branch], capture_output=True)
+        if (
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    repo,
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    f"refs/heads/{branch}",
+                ],
+                capture_output=True,
+            ).returncode
+            == 0
+        ):
+            subprocess.run(
+                ["git", "-C", repo, "branch", "-D", branch], capture_output=True
+            )
             stderr.print(f"[dim]Deleted branch {branch}[/]")
 
     if notes_path:
         notes_dir = Path(notes_path).parent
         if notes_dir.is_dir() and str(notes_dir).startswith(str(DATA_DIR)):
             import shutil
+
             shutil.rmtree(notes_dir)
             stderr.print("[dim]Deleted plan[/]")
 
@@ -805,11 +943,12 @@ def delete(todo_id: str = typer.Argument(None), force: bool = typer.Option(False
 # td link [id] [url|path]
 # ---------------------------------------------------------------------------
 
+
 @app.command(rich_help_panel=_NON_INTERACTIVE)
 def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> None:
     """Link a Linear ticket, branch, PR, or plan file."""
-    from td_cli.data import resolve_id, get_todo, read_todos, write_todos
-    from td_cli.git import extract_linear_ticket, extract_github_branch
+    from td_cli.data import get_todo, read_todos, resolve_id, write_todos
+    from td_cli.git import extract_github_branch, extract_linear_ticket
     from td_cli.ui import pick_todo, prompt_choose, prompt_input
 
     selected_id = ""
@@ -826,9 +965,7 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
         selected_id = resolve_id(arg1)
         url = arg2
     elif arg1:
-        if "linear.app" in arg1 or "github.com" in arg1:
-            url = arg1
-        elif "/" in arg1 or arg1.endswith(".md") or arg1.endswith(".txt"):
+        if "linear.app" in arg1 or "github.com" in arg1 or "/" in arg1 or arg1.endswith(".md") or arg1.endswith(".txt"):
             url = arg1
         else:
             try:
@@ -855,7 +992,9 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
                 if t["id"] == selected_id:
                     t["linear_ticket"] = ticket_id
             write_todos(todos)
-            stderr.print(f"[green]✓[/] Linked: [bold]{title}[/] › [magenta]{ticket_id}[/]")
+            stderr.print(
+                f"[green]✓[/] Linked: [bold]{title}[/] › [magenta]{ticket_id}[/]"
+            )
         elif "github.com" in url and "/pull/" in url:
             for t in todos:
                 if t["id"] == selected_id:
@@ -868,21 +1007,37 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
                 if t["id"] == selected_id:
                     t["branch"] = new_branch
             write_todos(todos)
-            stderr.print(f"[green]✓[/] Linked: [bold]{title}[/] › [cyan]{new_branch}[/]")
-        elif url.endswith(".md") or url.endswith(".txt") or url.startswith("/") or url.startswith("~") or url.startswith("./") or url.startswith(".."):
+            stderr.print(
+                f"[green]✓[/] Linked: [bold]{title}[/] › [cyan]{new_branch}[/]"
+            )
+        elif (
+            url.endswith(".md")
+            or url.endswith(".txt")
+            or url.startswith("/")
+            or url.startswith("~")
+            or url.startswith("./")
+            or url.startswith("..")
+        ):
             # Explicit file path
-            notes_input = url.replace("~", str(Path.home()), 1) if url.startswith("~") else url
+            notes_input = (
+                url.replace("~", str(Path.home()), 1) if url.startswith("~") else url
+            )
             notes_input = str(Path(notes_input).resolve())
             if not os.path.isfile(notes_input):
-                stderr.print(f"[yellow]Warning:[/] File does not exist yet: {notes_input}")
+                stderr.print(
+                    f"[yellow]Warning:[/] File does not exist yet: {notes_input}"
+                )
             for t in todos:
                 if t["id"] == selected_id:
                     t["notes_path"] = notes_input
             write_todos(todos)
-            stderr.print(f"[green]✓[/] Linked: [bold]{title}[/] › [dim]{notes_input}[/]")
+            stderr.print(
+                f"[green]✓[/] Linked: [bold]{title}[/] › [dim]{notes_input}[/]"
+            )
         else:
             # Treat as branch name (e.g. "my-branch", "feature/foo")
             from td_cli.git import is_local_branch
+
             if not is_local_branch(url):
                 stderr.print(f"[yellow]Warning:[/] Branch '{url}' not found locally.")
             for t in todos:
@@ -895,7 +1050,11 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
     # Interactive link type selector
     choice = prompt_choose(
         "What to link?",
-        "Linear ticket", "Git branch", "GitHub PR", "Claude session", "Plan file",
+        "Linear ticket",
+        "Git branch",
+        "GitHub PR",
+        "Claude session",
+        "Plan file",
     )
     if not choice:
         raise typer.Abort()
@@ -916,8 +1075,11 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
         if not branch_name:
             raise typer.Abort()
         from td_cli.git import is_local_branch
+
         if not is_local_branch(branch_name):
-            stderr.print(f"[yellow]Warning:[/] Branch '{branch_name}' not found locally.")
+            stderr.print(
+                f"[yellow]Warning:[/] Branch '{branch_name}' not found locally."
+            )
         for t in todos:
             if t["id"] == selected_id:
                 t["branch"] = branch_name
@@ -939,6 +1101,7 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
 # td open [id]
 # ---------------------------------------------------------------------------
 
+
 @app.command("open", rich_help_panel=_INTERACTIVE)
 def open_cmd(todo_id: str = typer.Argument(None)) -> None:
     """Open action menu for a todo."""
@@ -957,6 +1120,7 @@ def open_cmd(todo_id: str = typer.Argument(None)) -> None:
 # ---------------------------------------------------------------------------
 # td try [id]
 # ---------------------------------------------------------------------------
+
 
 @app.command("try", rich_help_panel=_NON_INTERACTIVE)
 def try_cmd(todo_id: str = typer.Argument(None)) -> None:
@@ -978,6 +1142,7 @@ def try_cmd(todo_id: str = typer.Argument(None)) -> None:
 # td take [id]
 # ---------------------------------------------------------------------------
 
+
 @app.command("take", rich_help_panel=_NON_INTERACTIVE)
 def take_cmd(todo_id: str = typer.Argument(None)) -> None:
     """Cherry-pick try branch changes back into the worktree."""
@@ -998,10 +1163,12 @@ def take_cmd(todo_id: str = typer.Argument(None)) -> None:
 # td browse
 # ---------------------------------------------------------------------------
 
+
 @app.command(rich_help_panel=_INTERACTIVE)
 def browse() -> None:
     """Open notes directory in editor."""
     from td_cli.config import NOTES_DIR, open_notes
+
     open_notes(str(NOTES_DIR))
 
 
@@ -1009,16 +1176,22 @@ def browse() -> None:
 # td sync [-n]
 # ---------------------------------------------------------------------------
 
+
 @app.command(rich_help_panel=_NON_INTERACTIVE)
 def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
     """Two-way sync: create/remove todos and dirs."""
     from td_cli.config import DONE_DIR, NOTES_DIR
     from td_cli.data import (
-        generate_id, get_todo, notes_folder_name, read_todos, write_todos, now_iso,
+        generate_id,
+        notes_folder_name,
+        now_iso,
+        read_todos,
+        write_todos,
     )
 
     created = 0
     removed = 0
+
     def _sync_dirs(base_dir: Path, parent_id: str = "", status: str = "active") -> None:
         nonlocal created
         if not base_dir.is_dir():
@@ -1045,10 +1218,12 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
             if not title:
                 title = d.name
 
-            status_label = f" [dim](done)[/]" if status == "done" else ""
+            status_label = " [dim](done)[/]" if status == "done" else ""
             if dry_run:
                 label = f"  ↳ {title}" if parent_id else title
-                stderr.print(f"[dim]Would create todo:[/] [bold]{label}[/]{status_label} [dim]({d})[/]")
+                stderr.print(
+                    f"[dim]Would create todo:[/] [bold]{label}[/]{status_label} [dim]({d})[/]"
+                )
                 if not plan.exists():
                     stderr.print(f"  [dim]Would create:[/] {plan}")
                 created += 1
@@ -1065,9 +1240,14 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
                     notes_path = str(plan)
 
                 entry: dict = {
-                    "id": todo_id, "title": title, "created_at": now,
-                    "branch": "", "worktree_path": "", "notes_path": notes_path,
-                    "status": status, "group": "todo",
+                    "id": todo_id,
+                    "title": title,
+                    "created_at": now,
+                    "branch": "",
+                    "worktree_path": "",
+                    "notes_path": notes_path,
+                    "status": status,
+                    "group": "todo",
                 }
                 if parent_id:
                     entry["parent_id"] = parent_id
@@ -1077,7 +1257,9 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
                 write_todos(todos)
 
                 label = f"  ↳ {title}" if parent_id else title
-                stderr.print(f"[dim]Created todo:[/] [bold]{label}[/]{status_label} [dim]({todo_id})[/]")
+                stderr.print(
+                    f"[dim]Created todo:[/] [bold]{label}[/]{status_label} [dim]({todo_id})[/]"
+                )
                 created += 1
                 _sync_dirs(d, todo_id, status)
 
@@ -1100,7 +1282,9 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
         if old_dir == expected_dir:
             continue
         if dry_run:
-            stderr.print(f"[dim]Would rename:[/] [bold]{old_dir.name}[/] → [bold]{expected_folder}[/]")
+            stderr.print(
+                f"[dim]Would rename:[/] [bold]{old_dir.name}[/] → [bold]{expected_folder}[/]"
+            )
         else:
             old_dir.rename(expected_dir)
             old_prefix = str(old_dir)
@@ -1109,7 +1293,9 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
             for s in todos:
                 if s.get("notes_path", "").startswith(old_prefix):
                     s["notes_path"] = s["notes_path"].replace(old_prefix, new_prefix, 1)
-            stderr.print(f"[dim]Renamed:[/] [bold]{old_dir.name}[/] → [bold]{expected_folder}[/]")
+            stderr.print(
+                f"[dim]Renamed:[/] [bold]{old_dir.name}[/] → [bold]{expected_folder}[/]"
+            )
         renamed += 1
     if not dry_run and renamed > 0:
         write_todos(todos)
@@ -1134,7 +1320,9 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
         if is_done and in_todo:
             dest = DONE_DIR / notes_dir.name
             if dry_run:
-                stderr.print(f"[dim]Would move:[/] [bold]{t['title']}[/] → [cyan]done/[/]")
+                stderr.print(
+                    f"[dim]Would move:[/] [bold]{t['title']}[/] → [cyan]done/[/]"
+                )
             else:
                 notes_dir.rename(dest)
                 old_prefix = str(notes_dir)
@@ -1145,14 +1333,20 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
                     if s.get("parent_id") in all_ids:
                         all_ids.add(s["id"])
                 for s in todos:
-                    if s["id"] in all_ids and s.get("notes_path", "").startswith(old_prefix):
-                        s["notes_path"] = s["notes_path"].replace(old_prefix, new_prefix, 1)
+                    if s["id"] in all_ids and s.get("notes_path", "").startswith(
+                        old_prefix
+                    ):
+                        s["notes_path"] = s["notes_path"].replace(
+                            old_prefix, new_prefix, 1
+                        )
                 stderr.print(f"[dim]Moved:[/] [bold]{t['title']}[/] → [cyan]done/[/]")
             moved += 1
         elif not is_done and in_done:
             dest = NOTES_DIR / notes_dir.name
             if dry_run:
-                stderr.print(f"[dim]Would move:[/] [bold]{t['title']}[/] → [cyan]todo/[/]")
+                stderr.print(
+                    f"[dim]Would move:[/] [bold]{t['title']}[/] → [cyan]todo/[/]"
+                )
             else:
                 notes_dir.rename(dest)
                 old_prefix = str(notes_dir)
@@ -1162,8 +1356,12 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
                     if s.get("parent_id") in all_ids:
                         all_ids.add(s["id"])
                 for s in todos:
-                    if s["id"] in all_ids and s.get("notes_path", "").startswith(old_prefix):
-                        s["notes_path"] = s["notes_path"].replace(old_prefix, new_prefix, 1)
+                    if s["id"] in all_ids and s.get("notes_path", "").startswith(
+                        old_prefix
+                    ):
+                        s["notes_path"] = s["notes_path"].replace(
+                            old_prefix, new_prefix, 1
+                        )
                 stderr.print(f"[dim]Moved:[/] [bold]{t['title']}[/] → [cyan]todo/[/]")
             moved += 1
     if not dry_run and moved > 0:
@@ -1178,7 +1376,9 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
         notes_dir = Path(notes_path).parent
         if not notes_dir.is_dir():
             if dry_run:
-                stderr.print(f"[dim]Would remove todo:[/] [bold]{t['title']}[/] [dim]({t['id']})[/]")
+                stderr.print(
+                    f"[dim]Would remove todo:[/] [bold]{t['title']}[/] [dim]({t['id']})[/]"
+                )
                 stderr.print(f"  [dim]Missing dir:[/] {notes_dir}")
                 removed += 1
             else:
@@ -1188,7 +1388,9 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
                     todos_fresh = read_todos()
                     todos_fresh = [x for x in todos_fresh if x["id"] != s["id"]]
                     write_todos(todos_fresh)
-                    stderr.print(f"[dim]Removed orphaned subtask:[/] [bold]{s['title']}[/]")
+                    stderr.print(
+                        f"[dim]Removed orphaned subtask:[/] [bold]{s['title']}[/]"
+                    )
                     removed += 1
                 todos_fresh = read_todos()
                 todos_fresh = [x for x in todos_fresh if x["id"] != t["id"]]
@@ -1209,7 +1411,9 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
                 parts.append(f"move {moved}")
             if renamed > 0:
                 parts.append(f"rename {renamed}")
-            stderr.print(f"\n[dim]Dry run — would {', '.join(parts)}. Run [cyan]td sync[/cyan] to apply.[/]")
+            stderr.print(
+                f"\n[dim]Dry run — would {', '.join(parts)}. Run [cyan]td sync[/cyan] to apply.[/]"
+            )
     elif created == 0 and removed == 0 and moved == 0 and renamed == 0:
         stderr.print("[green]✓[/] Already in sync")
     else:
@@ -1229,11 +1433,12 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
 # td find [query]
 # ---------------------------------------------------------------------------
 
+
 @app.command(rich_help_panel=_INTERACTIVE)
 def find(query: str = typer.Argument("")) -> None:
     """Search Claude sessions, create a todo, and resume."""
     from td_cli.session import start_session
-    from td_cli.ui import check_fzf, action_menu, pick_todo, prompt_input, FZF
+    from td_cli.ui import FZF, action_menu, check_fzf, pick_todo, prompt_input
 
     check_fzf()
     stderr.print("[dim]Scanning sessions…[/]")
@@ -1243,13 +1448,31 @@ def find(query: str = typer.Argument("")) -> None:
         stderr.print("[yellow]No sessions found.[/]")
         raise typer.Exit()
 
-    header = f'Sessions matching "{query}" — select to adopt (ESC to cancel)' if query else "Select a session to adopt as a todo (ESC to cancel)"
+    header = (
+        f'Sessions matching "{query}" — select to adopt (ESC to cancel)'
+        if query
+        else "Select a session to adopt as a todo (ESC to cancel)"
+    )
     result = subprocess.run(
-        [FZF, "--header", header, "--layout=reverse", "--height=80%",
-         "--with-nth=4..", "--delimiter=\t", "--header-first", "--border",
-         "--ansi", "--no-multi", "--no-sort", "--prompt=find ❯ ",
-         "--preview-window=hidden"],
-        input=lines, capture_output=True, text=True,
+        [
+            FZF,
+            "--header",
+            header,
+            "--layout=reverse",
+            "--height=80%",
+            "--with-nth=4..",
+            "--delimiter=\t",
+            "--header-first",
+            "--border",
+            "--ansi",
+            "--no-multi",
+            "--no-sort",
+            "--prompt=find ❯ ",
+            "--preview-window=hidden",
+        ],
+        input=lines,
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0 or not result.stdout.strip():
         raise typer.Abort()
@@ -1264,21 +1487,25 @@ def find(query: str = typer.Argument("")) -> None:
         raise typer.Abort()
 
     from td_cli.data import read_todos, write_todos
+
     if action == "Existing todo":
         tid = pick_todo("Select a todo to link this session to", "link ❯ ")
         if not tid:
             raise typer.Abort()
     else:
         from td_cli.data import random_name
+
         title = prompt_input("Todo title for this session...", default=random_name())
         if not title:
             raise typer.Abort()
         import os
+
         old_quiet = os.environ.get("TODO_QUIET", "")
         os.environ["TODO_QUIET"] = "1"
         # Capture new() output for the ID
-        from io import StringIO
         import contextlib
+        from io import StringIO
+
         f = StringIO()
         with contextlib.redirect_stdout(f):
             new(title=title, child_of=None)
@@ -1309,7 +1536,6 @@ def find(query: str = typer.Argument("")) -> None:
 
 def _build_session_lines(query: str = "") -> str:
     """Scan ~/.claude/projects for sessions and build fzf lines."""
-    import glob
     from td_cli.data import read_todos
 
     projects_dir = Path.home() / ".claude" / "projects"
@@ -1320,11 +1546,15 @@ def _build_session_lines(query: str = "") -> str:
     query_lower = query.lower()
 
     # Find session files sorted by mtime
-    files = sorted(projects_dir.glob("*/*.jsonl"), key=lambda f: f.stat().st_mtime, reverse=True)[:80]
+    files = sorted(
+        projects_dir.glob("*/*.jsonl"), key=lambda f: f.stat().st_mtime, reverse=True
+    )[:80]
 
-    from datetime import timezone
-    now_ts = datetime.now(timezone.utc).timestamp()
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+
+    now_ts = datetime.now(UTC).timestamp()
+    today_start = (
+        datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    )
     yesterday_start = today_start - 86400
 
     lines: list[str] = []
@@ -1351,7 +1581,8 @@ def _build_session_lines(query: str = "") -> str:
             content = msg.get("content", "")
             if isinstance(content, list):
                 content = " ".join(
-                    item.get("text", "") for item in content
+                    item.get("text", "")
+                    for item in content
                     if isinstance(item, dict) and item.get("type", "text") == "text"
                 )
             if content and not content.startswith("<"):
@@ -1394,6 +1625,7 @@ def _build_session_lines(query: str = "") -> str:
 # td version
 # ---------------------------------------------------------------------------
 
+
 @app.command(rich_help_panel=_ADMIN)
 def version() -> None:
     """Print version."""
@@ -1403,6 +1635,7 @@ def version() -> None:
 # ---------------------------------------------------------------------------
 # td settings
 # ---------------------------------------------------------------------------
+
 
 @app.command(rich_help_panel=_ADMIN)
 def settings() -> None:
@@ -1422,6 +1655,7 @@ def settings() -> None:
 # ---------------------------------------------------------------------------
 # td init
 # ---------------------------------------------------------------------------
+
 
 @app.command(rich_help_panel=_ADMIN)
 def init() -> None:
@@ -1452,7 +1686,9 @@ def init() -> None:
     stderr.print()
 
     stderr.print("  [bold]worktree_dir[/] — Worktree directory relative to repo root")
-    wt_dir = prompt_input("Worktree directory", default=cur.get("worktree_dir", ".claude/worktrees"))
+    wt_dir = prompt_input(
+        "Worktree directory", default=cur.get("worktree_dir", ".claude/worktrees")
+    )
     stderr.print()
 
     stderr.print("  [bold]branch_prefix[/] — Prefix for auto-created branches")
@@ -1460,18 +1696,28 @@ def init() -> None:
     stderr.print()
 
     settings_dir.mkdir(parents=True, exist_ok=True)
-    SETTINGS_PATH.write_text(json.dumps({
-        "data_dir": data_dir or "~/td",
-        "repo": "",
-        "editor": editor,
-        "linear_org": linear_org,
-        "worktree_dir": wt_dir or ".claude/worktrees",
-        "branch_prefix": bp or "todo",
-    }, indent=2) + "\n")
+    SETTINGS_PATH.write_text(
+        json.dumps(
+            {
+                "data_dir": data_dir or "~/td",
+                "repo": "",
+                "editor": editor,
+                "linear_org": linear_org,
+                "worktree_dir": wt_dir or ".claude/worktrees",
+                "branch_prefix": bp or "todo",
+            },
+            indent=2,
+        )
+        + "\n"
+    )
 
     stderr.print(f"[green]✓[/] Settings saved to [dim]{SETTINGS_PATH}[/]")
 
-    expanded = data_dir.replace("~", str(Path.home()), 1) if data_dir.startswith("~") else data_dir
+    expanded = (
+        data_dir.replace("~", str(Path.home()), 1)
+        if data_dir.startswith("~")
+        else data_dir
+    )
     p = Path(expanded)
     if not p.is_dir():
         p.mkdir(parents=True)
@@ -1484,25 +1730,55 @@ def init() -> None:
 # td update
 # ---------------------------------------------------------------------------
 
+
 @app.command(rich_help_panel=_ADMIN)
 def update() -> None:
     """Update td to the latest version."""
+    import subprocess as _sp
+
     self_path = Path(__file__).resolve()
     # Walk up to find .git
-    for parent in [self_path.parent, self_path.parent.parent, self_path.parent.parent.parent]:
+    repo_dir: Path | None = None
+    for parent in [
+        self_path.parent,
+        self_path.parent.parent,
+        self_path.parent.parent.parent,
+    ]:
         if (parent / ".git").is_dir():
-            stderr.print(f"[dim]Running from git clone at {parent}[/]")
-            stderr.print("[dim]Use 'git pull && ./install.sh' to update.[/]")
-            return
+            repo_dir = parent
+            break
+
+    if repo_dir is not None:
+        stderr.print(f"[dim]Updating git clone at {repo_dir}…[/]")
+        try:
+            _sp.run(["git", "pull", "--ff-only"], cwd=repo_dir, check=True)
+        except _sp.CalledProcessError:
+            stderr.print("[red]✗[/] git pull failed")
+            raise typer.Exit(1)
+        install_sh = repo_dir / "install.sh"
+        if install_sh.exists():
+            try:
+                _sp.run(
+                    ["bash", str(install_sh), "--no-hooks"], cwd=repo_dir, check=True
+                )
+            except _sp.CalledProcessError:
+                stderr.print("[red]✗[/] install.sh failed")
+                raise typer.Exit(1)
+        stderr.print("[green]✓[/] Updated successfully")
+        return
 
     stderr.print("[dim]Checking for updates...[/]")
     import subprocess
+
     try:
         result = subprocess.run(
             ["curl", "-fsSL", "https://api.github.com/repos/rosgoo/td/releases/latest"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         import re
+
         m = re.search(r'"tag_name":\s*"([^"]+)"', result.stdout)
         if not m:
             stderr.print("[red]✗[/] Could not fetch latest version from GitHub")
@@ -1535,7 +1811,7 @@ _LOGO = r"""
 @app.command("help", rich_help_panel=_ADMIN)
 def help_cmd(ctx: typer.Context) -> None:
     """Show usage."""
-    stderr.print(f"[bold]{_LOGO}[/]")
+    stderr.print(f"[bold cyan]{_LOGO}[/]")
     ctx.parent.info_name = "td"  # type: ignore[union-attr]
     typer.echo(ctx.parent.get_help())  # type: ignore[union-attr]
 
@@ -1544,12 +1820,13 @@ def help_cmd(ctx: typer.Context) -> None:
 # Picker (default command) + action menu
 # ---------------------------------------------------------------------------
 
+
 def _select_todo(todo_id: str) -> None:
     """Show action menu for a selected todo."""
-    from td_cli.config import open_notes, open_url, REPO_ROOT
-    from td_cli.data import get_todo, read_todos, write_todos, now_iso
-    from td_cli.git import linear_ticket_url, github_branch_url
-    from td_cli.session import start_session, try_worktree, take_worktree
+    from td_cli.config import REPO_ROOT, open_notes, open_url
+    from td_cli.data import get_todo, now_iso, read_todos, write_todos
+    from td_cli.git import github_branch_url, linear_ticket_url
+    from td_cli.session import start_session, take_worktree, try_worktree
     from td_cli.ui import action_menu
 
     todo = get_todo(todo_id)
@@ -1561,6 +1838,7 @@ def _select_todo(todo_id: str) -> None:
     notes_path = todo.get("notes_path", "")
     if not notes_path or not os.path.isfile(notes_path):
         from td_cli.data import ensure_notes
+
         notes_path = ensure_notes(todo_id, title)
 
     # Track last opened
@@ -1602,11 +1880,24 @@ def _select_todo(todo_id: str) -> None:
         options.append("Try on main repo")
         # Check if a try branch exists for "take"
         from td_cli.data import slugify
+
         _try_branch = f"try-{slugify(title)}"
-        if REPO_ROOT and subprocess.run(
-            ["git", "-C", REPO_ROOT, "show-ref", "--verify", "--quiet", f"refs/heads/{_try_branch}"],
-            capture_output=True,
-        ).returncode == 0:
+        if (
+            REPO_ROOT
+            and subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    REPO_ROOT,
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    f"refs/heads/{_try_branch}",
+                ],
+                capture_output=True,
+            ).returncode
+            == 0
+        ):
             options.append("Take from try branch")
     options.append("Mark as done")
     options.append("Move to TODO" if group == "backlog" else "Move to backlog")
@@ -1662,7 +1953,7 @@ def _select_todo(todo_id: str) -> None:
 def _picker() -> None:
     """Main interactive picker loop."""
     from td_cli.data import random_name
-    from td_cli.ui import check_fzf, format_fzf_lines, prompt_input, FZF
+    from td_cli.ui import FZF, check_fzf, format_fzf_lines, prompt_input
 
     check_fzf()
     show_done = False
@@ -1680,11 +1971,27 @@ def _picker() -> None:
 
         header = "TODOs — enter: open · ctrl-d: toggle done · esc: quit"
         result = subprocess.run(
-            [FZF, "--header", header, "--layout=reverse", "--height=80%",
-             "--with-nth=4..", "--no-hscroll", "--delimiter=\t", "--header-first",
-             "--border", "--ansi", "--no-multi", "--no-sort", "--prompt=❯ ",
-             "--preview-window=hidden", "--expect=ctrl-d"],
-            input=inp, capture_output=True, text=True,
+            [
+                FZF,
+                "--header",
+                header,
+                "--layout=reverse",
+                "--height=80%",
+                "--with-nth=4..",
+                "--no-hscroll",
+                "--delimiter=\t",
+                "--header-first",
+                "--border",
+                "--ansi",
+                "--no-multi",
+                "--no-sort",
+                "--prompt=❯ ",
+                "--preview-window=hidden",
+                "--expect=ctrl-d",
+            ],
+            input=inp,
+            capture_output=True,
+            text=True,
         )
         if result.returncode != 0 or not result.stdout.strip():
             raise typer.Exit()
