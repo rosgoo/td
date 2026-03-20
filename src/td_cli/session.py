@@ -664,6 +664,27 @@ def start_session(todo_id: str, mode: str = "") -> None:
             else:
                 return
 
+        # Check branch matches (non-worktree sessions)
+        if branch:
+            current_branch = subprocess.run(
+                ["git", "branch", "--show-current"],
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            if current_branch and current_branch != branch:
+                choice = prompt_choose(
+                    f"On branch '{current_branch}', todo expects '{branch}'",
+                    f"Switch to {branch}",
+                    f"Stay on {current_branch}",
+                    "Cancel",
+                )
+                if choice and choice.startswith("Switch"):
+                    subprocess.run(
+                        ["git", "checkout", branch], capture_output=True
+                    )
+                elif choice and choice.startswith("Cancel"):
+                    return
+
         launch_claude(todo_id, session_id)
         return
 
