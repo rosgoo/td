@@ -1014,7 +1014,7 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
     """Two-way sync: create/remove todos and dirs."""
     from td_cli.config import DONE_DIR, NOTES_DIR
     from td_cli.data import (
-        generate_id, get_todo, read_todos, write_todos, now_iso,
+        generate_id, get_todo, notes_folder_name, read_todos, write_todos, now_iso,
     )
 
     created = 0
@@ -1083,6 +1083,36 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
 
     _sync_dirs(NOTES_DIR, status="active")
     _sync_dirs(DONE_DIR, status="done")
+
+    # Rename folders whose todo title has changed
+    renamed = 0
+    todos = read_todos()
+    for t in todos:
+        notes_path = t.get("notes_path", "")
+        if not notes_path:
+            continue
+        old_dir = Path(notes_path).parent
+        if not old_dir.is_dir():
+            continue
+        containing_dir = old_dir.parent
+        expected_folder = notes_folder_name(t["id"], t["title"], containing_dir)
+        expected_dir = containing_dir / expected_folder
+        if old_dir == expected_dir:
+            continue
+        if dry_run:
+            stderr.print(f"[dim]Would rename:[/] [bold]{old_dir.name}[/] → [bold]{expected_folder}[/]")
+        else:
+            old_dir.rename(expected_dir)
+            old_prefix = str(old_dir)
+            new_prefix = str(expected_dir)
+            # Update paths for this todo and all descendants
+            for s in todos:
+                if s.get("notes_path", "").startswith(old_prefix):
+                    s["notes_path"] = s["notes_path"].replace(old_prefix, new_prefix, 1)
+            stderr.print(f"[dim]Renamed:[/] [bold]{old_dir.name}[/] → [bold]{expected_folder}[/]")
+        renamed += 1
+    if not dry_run and renamed > 0:
+        write_todos(todos)
 
     # Move misplaced folders (done todos in todo/, active todos in done/)
     moved = 0
@@ -1167,7 +1197,7 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
                 removed += 1
 
     if dry_run:
-        if created == 0 and removed == 0 and moved == 0:
+        if created == 0 and removed == 0 and moved == 0 and renamed == 0:
             stderr.print("[green]✓[/] Already in sync")
         else:
             parts = []
@@ -1177,8 +1207,10 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
                 parts.append(f"remove {removed}")
             if moved > 0:
                 parts.append(f"move {moved}")
+            if renamed > 0:
+                parts.append(f"rename {renamed}")
             stderr.print(f"\n[dim]Dry run — would {', '.join(parts)}. Run [cyan]td sync[/cyan] to apply.[/]")
-    elif created == 0 and removed == 0 and moved == 0:
+    elif created == 0 and removed == 0 and moved == 0 and renamed == 0:
         stderr.print("[green]✓[/] Already in sync")
     else:
         parts = []
@@ -1188,6 +1220,8 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
             parts.append(f"removed {removed}")
         if moved > 0:
             parts.append(f"moved {moved}")
+        if renamed > 0:
+            parts.append(f"renamed {renamed}")
         stderr.print(f"[green]✓[/] Synced: {', '.join(parts)}")
 
 
