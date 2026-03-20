@@ -1957,10 +1957,11 @@ def _picker() -> None:
 
     check_fzf()
     show_done = False
+    collapse_children = False
 
     while True:
-        todo_lines = format_fzf_lines(show_done, "todo")
-        backlog_lines = format_fzf_lines(show_done, "backlog")
+        todo_lines = format_fzf_lines(show_done, "todo", collapse_children)
+        backlog_lines = format_fzf_lines(show_done, "backlog", collapse_children)
 
         inp = "__new__\t\t\t            ✦ New todo"
         if todo_lines:
@@ -1969,7 +1970,7 @@ def _picker() -> None:
             sep = "\033[2m  ─── Backlog " + "─" * 90 + "\033[0m"
             inp += f"\n__sep__\t\t\t{sep}\n{backlog_lines}"
 
-        header = f"\033[1;36m{_LOGO}\033[0m\n  enter: open · ctrl-d: toggle done · esc: quit"
+        header = f"\033[1;36m{_LOGO}\033[0m\n  enter: open · ctrl-d: toggle done · ctrl-s: toggle children · esc: quit"
         result = subprocess.run(
             [
                 FZF,
@@ -1987,7 +1988,7 @@ def _picker() -> None:
                 "--no-sort",
                 "--prompt=❯ ",
                 "--preview-window=hidden",
-                "--expect=ctrl-d",
+                "--expect=ctrl-d,ctrl-s",
             ],
             input=inp,
             capture_output=True,
@@ -2004,6 +2005,10 @@ def _picker() -> None:
 
         if key == "ctrl-d":
             show_done = not show_done
+            continue
+
+        if key == "ctrl-s":
+            collapse_children = not collapse_children
             continue
 
         if not selection:

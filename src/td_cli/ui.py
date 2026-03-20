@@ -100,7 +100,7 @@ def pick_todo(header: str = "Select a todo", prompt: str = "❯ ") -> str | None
 
 # --- Line formatting for fzf -----------------------------------------------
 
-def format_fzf_lines(show_done: bool = True, group_filter: str = "") -> str:
+def format_fzf_lines(show_done: bool = True, group_filter: str = "", collapse_children: bool = False) -> str:
     """Render todos as tab-delimited, ANSI-colored lines for fzf.
 
     Each line: ID\\tworktree\\tbranch\\t<visible columns>
@@ -146,9 +146,16 @@ def format_fzf_lines(show_done: bool = True, group_filter: str = "") -> str:
             cur = by_id[cur["parent_id"]]
         return cur
 
+    # Count all descendants (regardless of filters) for collapse indicator
+    def count_descendants(node_id: str) -> int:
+        kids = children.get(node_id, [])
+        return sum(1 + count_descendants(k["id"]) for k in kids)
+
     # Emit tree: node, then active children, then done children
     def emit_tree(node: dict) -> list[dict]:
         result = [node]
+        if collapse_children:
+            return result
         kids = children.get(node["id"], [])
         active_kids = sorted([k for k in kids if k.get("status") == "active"],
                              key=lambda t: t.get("created_at", ""))
@@ -228,9 +235,13 @@ def format_fzf_lines(show_done: bool = True, group_filter: str = "") -> str:
         indent = ("   " * (d - 1) + "└─ ") if is_subtask else ""
         tw = max(80 - d * 3, 0)
 
+        # Collapse indicator
+        n_desc = count_descendants(tid) if collapse_children else 0
+        collapse_suffix = f" ({n_desc})" if n_desc > 0 else ""
+
         # Build columns
         age_col = f"{age:<10}"
-        full_title = f"{ticket} {title}" if ticket else title
+        full_title = (f"{ticket} {title}" if ticket else title) + collapse_suffix
         title_col = f"{full_title[:tw]:<{tw}}"
         dir_col = f"{dir_name[:16]:<16}"
         branch_col = f"{display_branch[:30]:<30}"
