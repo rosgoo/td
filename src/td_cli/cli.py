@@ -1969,7 +1969,7 @@ def _picker() -> None:
             sep = "\033[2m  ─── Backlog " + "─" * 90 + "\033[0m"
             inp += f"\n__sep__\t\t\t{sep}\n{backlog_lines}"
 
-        header = "TODOs — enter: open · ctrl-d: toggle done · esc: quit"
+        header = f"\033[1;36m{_LOGO}\033[0m\n  enter: open · ctrl-d: toggle done · esc: quit"
         result = subprocess.run(
             [
                 FZF,
