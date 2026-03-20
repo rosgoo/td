@@ -356,20 +356,22 @@ Settings are saved to `~/.config/claude-todo/settings.json`:
   "editor": "obsidian",
   "linear_org": "",
   "worktree_dir": ".claude/worktrees",
-  "branch_prefix": "todo"
+  "branch_prefix": "todo",
+  "worktree_script": ""
 }
 ```
 
 | Field | Description | Default |
 |-------|-------------|---------|
 | `data_dir` | Where todos and notes are stored | `~/td` |
-| `repo` | Git repo root (auto-detected if empty) | auto |
+| `repo` | Git repo root override — leave empty to auto-detect via `git rev-parse`. Useful if you work from a subdirectory or worktree and want to pin the repo root explicitly. | _(auto-detect)_ |
 | `editor` | Editor for notes | `open` (macOS) / `vi` |
 | `linear_org` | Linear organization slug (for ticket URLs) | _(disabled)_ |
 | `worktree_dir` | Worktree directory relative to repo root | `.claude/worktrees` |
 | `branch_prefix` | Prefix for auto-created branches | `todo` |
+| `worktree_script` | Shell command to run after creating a worktree (runs with cwd set to the new worktree) | _(disabled)_ |
 
-Environment variables override settings: `TODO_DATA_DIR`, `TODO_REPO`, `TODO_EDITOR`, `TODO_LINEAR_ORG`, `TODO_WORKTREE_DIR`, `TODO_BRANCH_PREFIX`.
+Environment variables override settings: `TODO_DATA_DIR`, `TODO_REPO`, `TODO_EDITOR`, `TODO_LINEAR_ORG`, `TODO_WORKTREE_DIR`, `TODO_BRANCH_PREFIX`, `TODO_WORKTREE_SCRIPT`.
 
 ---
 

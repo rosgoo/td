@@ -1677,6 +1677,10 @@ def init() -> None:
     data_dir = prompt_input("Data directory", default=cur.get("data_dir", "~/td"))
     stderr.print()
 
+    stderr.print("  [bold]repo[/] — Git repo root (leave empty to auto-detect via git)")
+    repo = prompt_input("Repo root", default=cur.get("repo", ""))
+    stderr.print()
+
     stderr.print("  [bold]editor[/] — Editor for opening plan.md files")
     editor = prompt_input("Editor command", default=cur.get("editor", ""))
     stderr.print()
@@ -1695,16 +1699,21 @@ def init() -> None:
     bp = prompt_input("Branch prefix", default=cur.get("branch_prefix", "todo"))
     stderr.print()
 
+    stderr.print("  [bold]worktree_script[/] — Script to run after creating a worktree (optional)")
+    wt_script = prompt_input("Worktree script", default=cur.get("worktree_script", ""))
+    stderr.print()
+
     settings_dir.mkdir(parents=True, exist_ok=True)
     SETTINGS_PATH.write_text(
         json.dumps(
             {
                 "data_dir": data_dir or "~/td",
-                "repo": "",
+                "repo": repo,
                 "editor": editor,
                 "linear_org": linear_org,
                 "worktree_dir": wt_dir or ".claude/worktrees",
                 "branch_prefix": bp or "todo",
+                "worktree_script": wt_script,
             },
             indent=2,
         )

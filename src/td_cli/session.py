@@ -7,7 +7,7 @@ import uuid
 
 import typer
 
-from td_cli.config import BRANCH_PREFIX, REPO_ROOT, console
+from td_cli.config import BRANCH_PREFIX, REPO_ROOT, WORKTREE_SCRIPT, console
 from td_cli.data import (
     get_todo,
     read_todos,
@@ -150,6 +150,15 @@ def init_worktree_for_todo(todo_id: str) -> str:
             ["git", "-C", repo, "worktree", "add", "-b", branch, wt_path, base],
             capture_output=True,
         )
+
+    # Run worktree setup script if configured
+    if WORKTREE_SCRIPT:
+        console.print(f"[dim]Running worktree script: {WORKTREE_SCRIPT}[/]")
+        result = subprocess.run(
+            WORKTREE_SCRIPT, shell=True, cwd=wt_path,
+        )
+        if result.returncode != 0:
+            console.print(f"[yellow]Warning:[/] Worktree script exited with code {result.returncode}")
 
     # Update todo record
     todos = read_todos()
