@@ -1,20 +1,43 @@
 """Git worktree lifecycle and Claude Code session management."""
 
+import glob as _glob
 import os
 import subprocess
 import uuid
 
-from td_cli.config import REPO_ROOT, BRANCH_PREFIX, console
-from td_cli.data import (
-    get_todo, read_todos, write_todos, slugify,
-)
-from td_cli.git import require_repo, worktree_dir, validate_worktree
 import typer
 
+from td_cli.config import BRANCH_PREFIX, REPO_ROOT, console
+from td_cli.data import (
+    get_todo,
+    read_todos,
+    slugify,
+    write_todos,
+)
+from td_cli.git import require_repo, validate_worktree, worktree_dir
 from td_cli.ui import prompt_choose
 
 
+def _find_session_file(session_id: str, hint_cwd: str = "") -> str | None:
+    """Locate a Claude session file on disk.
+
+    Claude Code encodes the CWD by replacing both '/' and '.' with '-'.
+    Rather than replicating that exactly, we try the hint first and fall
+    back to a glob across all project directories.
+    """
+    projects_base = os.path.expanduser("~/.claude/projects")
+    if hint_cwd:
+        encoded = hint_cwd.replace("/", "-").replace(".", "-")
+        candidate = f"{projects_base}/{encoded}/{session_id}.jsonl"
+        if os.path.isfile(candidate):
+            return candidate
+    # Fallback: glob across all project dirs
+    matches = _glob.glob(f"{projects_base}/*/{session_id}.jsonl")
+    return matches[0] if matches else None
+
+
 # --- Worktree creation ------------------------------------------------------
+
 
 def init_worktree_for_todo(todo_id: str) -> str:
     """Create or reuse a git worktree for a todo. Returns worktree path."""
@@ -32,16 +55,28 @@ def init_worktree_for_todo(todo_id: str) -> str:
         branch = f"{BRANCH_PREFIX}/{slug}"
 
     # Check where branch exists
-    has_local = subprocess.run(
-        ["git", "-C", repo, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
-        capture_output=True,
-    ).returncode == 0
+    has_local = (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                repo,
+                "show-ref",
+                "--verify",
+                "--quiet",
+                f"refs/heads/{branch}",
+            ],
+            capture_output=True,
+        ).returncode
+        == 0
+    )
 
     has_remote = False
     try:
         result = subprocess.run(
             ["git", "-C", repo, "ls-remote", "--heads", "origin", branch],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         has_remote = bool(result.stdout.strip())
     except Exception:
@@ -51,8 +86,9 @@ def init_worktree_for_todo(todo_id: str) -> str:
         console.print(f"[yellow]Branch '{branch}' already exists locally. Using it.[/]")
         if has_remote:
             console.print("[dim]Fetching latest from remote...[/]")
-            subprocess.run(["git", "-C", repo, "fetch", "origin", branch],
-                           capture_output=True)
+            subprocess.run(
+                ["git", "-C", repo, "fetch", "origin", branch], capture_output=True
+            )
         # Check for existing worktree
         existing_wt = _find_worktree_for_branch(repo, branch)
         if existing_wt:
@@ -71,18 +107,42 @@ def init_worktree_for_todo(todo_id: str) -> str:
             )
     elif has_remote:
         console.print(f"[dim]Branch '{branch}' found on remote. Fetching...[/]")
-        subprocess.run(["git", "-C", repo, "fetch", "origin", branch], capture_output=True)
+        subprocess.run(
+            ["git", "-C", repo, "fetch", "origin", branch], capture_output=True
+        )
         os.makedirs(os.path.dirname(wt_path), exist_ok=True)
         subprocess.run(
-            ["git", "-C", repo, "worktree", "add", "--track", "-b", branch, wt_path, f"origin/{branch}"],
+            [
+                "git",
+                "-C",
+                repo,
+                "worktree",
+                "add",
+                "--track",
+                "-b",
+                branch,
+                wt_path,
+                f"origin/{branch}",
+            ],
             capture_output=True,
         )
     else:
         base = "master"
-        if subprocess.run(
-            ["git", "-C", repo, "show-ref", "--verify", "--quiet", "refs/heads/master"],
-            capture_output=True,
-        ).returncode != 0:
+        if (
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    repo,
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    "refs/heads/master",
+                ],
+                capture_output=True,
+            ).returncode
+            != 0
+        ):
             base = "main"
         os.makedirs(os.path.dirname(wt_path), exist_ok=True)
         console.print(f"[dim]Creating worktree on branch {branch} from {base}...[/]")
@@ -105,7 +165,8 @@ def _find_worktree_for_branch(repo: str, branch: str) -> str | None:
     """Find an existing worktree path for a branch."""
     result = subprocess.run(
         ["git", "-C", repo, "worktree", "list", "--porcelain"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     wt = None
     for line in result.stdout.splitlines():
@@ -117,6 +178,7 @@ def _find_worktree_for_branch(repo: str, branch: str) -> str | None:
 
 
 # --- Try (apply worktree diff to main repo) ---------------------------------
+
 
 def try_worktree(todo_id: str) -> None:
     """Apply worktree diff to a try branch on the main repo."""
@@ -130,7 +192,9 @@ def try_worktree(todo_id: str) -> None:
     title = todo["title"]
 
     if not wt_path:
-        console.print("[red]Error:[/] This todo has no worktree. 'try' only works with worktree sessions.")
+        console.print(
+            "[red]Error:[/] This todo has no worktree. 'try' only works with worktree sessions."
+        )
         raise SystemExit(1)
 
     if not validate_worktree(wt_path):
@@ -139,16 +203,20 @@ def try_worktree(todo_id: str) -> None:
 
     # Determine base branch
     base = "master"
-    if subprocess.run(
-        ["git", "-C", repo, "show-ref", "--verify", "--quiet", "refs/heads/master"],
-        capture_output=True,
-    ).returncode != 0:
+    if (
+        subprocess.run(
+            ["git", "-C", repo, "show-ref", "--verify", "--quiet", "refs/heads/master"],
+            capture_output=True,
+        ).returncode
+        != 0
+    ):
         base = "main"
 
     # Check for changes
     diff = subprocess.run(
         ["git", "-C", wt_path, "diff", f"{base}...HEAD"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     ).stdout
     if not diff:
         console.print(f"[yellow]No changes[/] between {base} and {branch}.")
@@ -159,51 +227,86 @@ def try_worktree(todo_id: str) -> None:
 
     # Check for uncommitted changes
     dirty = (
-        subprocess.run(["git", "-C", repo, "diff", "--quiet"], capture_output=True).returncode != 0
-        or subprocess.run(["git", "-C", repo, "diff", "--cached", "--quiet"], capture_output=True).returncode != 0
+        subprocess.run(
+            ["git", "-C", repo, "diff", "--quiet"], capture_output=True
+        ).returncode
+        != 0
+        or subprocess.run(
+            ["git", "-C", repo, "diff", "--cached", "--quiet"], capture_output=True
+        ).returncode
+        != 0
     )
     if dirty:
-        console.print("[red]Error:[/] Main repo has uncommitted changes. Commit or stash them first.")
+        console.print(
+            "[red]Error:[/] Main repo has uncommitted changes. Commit or stash them first."
+        )
         raise SystemExit(1)
 
     console.print(f"[bold]Try:[/] {title}")
     console.print(f"[dim]Applying diff from {branch} onto {base} as {try_branch}[/]")
 
     # Delete existing try branch
-    if subprocess.run(
-        ["git", "-C", repo, "show-ref", "--verify", "--quiet", f"refs/heads/{try_branch}"],
-        capture_output=True,
-    ).returncode == 0:
-        if not typer.confirm(f"Branch '{try_branch}' already exists. Replace it?", default=False):
+    if (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                repo,
+                "show-ref",
+                "--verify",
+                "--quiet",
+                f"refs/heads/{try_branch}",
+            ],
+            capture_output=True,
+        ).returncode
+        == 0
+    ):
+        if not typer.confirm(
+            f"Branch '{try_branch}' already exists. Replace it?", default=False
+        ):
             return
         current = subprocess.run(
             ["git", "-C", repo, "branch", "--show-current"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         ).stdout.strip()
         if current == try_branch:
             subprocess.run(["git", "-C", repo, "checkout", base], capture_output=True)
-        subprocess.run(["git", "-C", repo, "branch", "-D", try_branch], capture_output=True)
+        subprocess.run(
+            ["git", "-C", repo, "branch", "-D", try_branch], capture_output=True
+        )
 
     # Create try branch
-    subprocess.run(["git", "-C", repo, "checkout", "-b", try_branch, base], capture_output=True)
+    subprocess.run(
+        ["git", "-C", repo, "checkout", "-b", try_branch, base], capture_output=True
+    )
 
     # Apply diff
     apply_result = subprocess.run(
         ["git", "-C", repo, "apply", "--index"],
-        input=diff, capture_output=True, text=True,
+        input=diff,
+        capture_output=True,
+        text=True,
     )
     if apply_result.returncode != 0:
         console.print("[red]Error:[/] Failed to apply diff cleanly. Resetting.")
         subprocess.run(["git", "-C", repo, "checkout", base], capture_output=True)
-        subprocess.run(["git", "-C", repo, "branch", "-D", try_branch], capture_output=True)
+        subprocess.run(
+            ["git", "-C", repo, "branch", "-D", try_branch], capture_output=True
+        )
         raise SystemExit(1)
 
-    subprocess.run(["git", "-C", repo, "commit", "-m", f"try: {title}"], capture_output=True)
-    console.print(f"[green]✓[/] Created [bold]{try_branch}[/] with changes from {branch}")
+    subprocess.run(
+        ["git", "-C", repo, "commit", "-m", f"try: {title}"], capture_output=True
+    )
+    console.print(
+        f"[green]✓[/] Created [bold]{try_branch}[/] with changes from {branch}"
+    )
     console.print(f"[dim]Main repo is now on {try_branch}. Worktree is unchanged.[/]")
 
 
 # --- Take (bring try branch changes back to worktree) -----------------------
+
 
 def take_worktree(todo_id: str) -> None:
     """Cherry-pick commits made on the try branch back into the worktree."""
@@ -217,7 +320,9 @@ def take_worktree(todo_id: str) -> None:
     title = todo["title"]
 
     if not wt_path:
-        console.print("[red]Error:[/] This todo has no worktree. 'take' only works with worktree sessions.")
+        console.print(
+            "[red]Error:[/] This todo has no worktree. 'take' only works with worktree sessions."
+        )
         raise SystemExit(1)
 
     if not validate_worktree(wt_path):
@@ -228,18 +333,36 @@ def take_worktree(todo_id: str) -> None:
     try_branch = f"try-{slug}"
 
     # Verify try branch exists
-    if subprocess.run(
-        ["git", "-C", repo, "show-ref", "--verify", "--quiet", f"refs/heads/{try_branch}"],
-        capture_output=True,
-    ).returncode != 0:
-        console.print(f"[red]Error:[/] No try branch '{try_branch}' found. Run 'td try' first.")
+    if (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                repo,
+                "show-ref",
+                "--verify",
+                "--quiet",
+                f"refs/heads/{try_branch}",
+            ],
+            capture_output=True,
+        ).returncode
+        != 0
+    ):
+        console.print(
+            f"[red]Error:[/] No try branch '{try_branch}' found. Run 'td try' first."
+        )
         raise SystemExit(1)
 
     # Find the initial "try:" commit (first commit on the try branch after base)
-    try_commits = subprocess.run(
-        ["git", "-C", repo, "log", try_branch, "--format=%H %s", "--reverse"],
-        capture_output=True, text=True,
-    ).stdout.strip().splitlines()
+    try_commits = (
+        subprocess.run(
+            ["git", "-C", repo, "log", try_branch, "--format=%H %s", "--reverse"],
+            capture_output=True,
+            text=True,
+        )
+        .stdout.strip()
+        .splitlines()
+    )
 
     if not try_commits:
         console.print(f"[yellow]No commits[/] on {try_branch}.")
@@ -254,30 +377,53 @@ def take_worktree(todo_id: str) -> None:
             break
 
     if not initial_hash:
-        console.print(f"[red]Error:[/] Could not find the initial 'try:' commit on {try_branch}.")
+        console.print(
+            f"[red]Error:[/] Could not find the initial 'try:' commit on {try_branch}."
+        )
         raise SystemExit(1)
 
     # Get commits after the initial try commit
     new_commits_output = subprocess.run(
-        ["git", "-C", repo, "log", f"{initial_hash}..{try_branch}", "--format=%H", "--reverse"],
-        capture_output=True, text=True,
+        [
+            "git",
+            "-C",
+            repo,
+            "log",
+            f"{initial_hash}..{try_branch}",
+            "--format=%H",
+            "--reverse",
+        ],
+        capture_output=True,
+        text=True,
     ).stdout.strip()
 
     if not new_commits_output:
-        console.print(f"[yellow]No new commits[/] on {try_branch} beyond the initial try.")
+        console.print(
+            f"[yellow]No new commits[/] on {try_branch} beyond the initial try."
+        )
         return
 
     new_commits = new_commits_output.splitlines()
     console.print(f"[bold]Take:[/] {title}")
-    console.print(f"[dim]Cherry-picking {len(new_commits)} commit(s) from {try_branch} into {branch}[/]")
+    console.print(
+        f"[dim]Cherry-picking {len(new_commits)} commit(s) from {try_branch} into {branch}[/]"
+    )
 
     # Check for uncommitted changes in worktree
     dirty = (
-        subprocess.run(["git", "-C", wt_path, "diff", "--quiet"], capture_output=True).returncode != 0
-        or subprocess.run(["git", "-C", wt_path, "diff", "--cached", "--quiet"], capture_output=True).returncode != 0
+        subprocess.run(
+            ["git", "-C", wt_path, "diff", "--quiet"], capture_output=True
+        ).returncode
+        != 0
+        or subprocess.run(
+            ["git", "-C", wt_path, "diff", "--cached", "--quiet"], capture_output=True
+        ).returncode
+        != 0
     )
     if dirty:
-        console.print("[red]Error:[/] Worktree has uncommitted changes. Commit or stash them first.")
+        console.print(
+            "[red]Error:[/] Worktree has uncommitted changes. Commit or stash them first."
+        )
         raise SystemExit(1)
 
     # Cherry-pick each commit
@@ -286,12 +432,15 @@ def take_worktree(todo_id: str) -> None:
     for commit_hash in new_commits:
         result = subprocess.run(
             ["git", "-C", wt_path, "cherry-pick", commit_hash],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if result.returncode != 0:
             console.print(f"[red]Error:[/] Cherry-pick failed for {commit_hash[:8]}.")
             console.print(f"[dim]{result.stderr.strip()}[/]")
-            console.print(f"[dim]Resolve conflicts in {wt_path}, then run 'git cherry-pick --continue'.[/]")
+            console.print(
+                f"[dim]Resolve conflicts in {wt_path}, then run 'git cherry-pick --continue'.[/]"
+            )
             failed = True
             break
         picked += 1
@@ -302,21 +451,38 @@ def take_worktree(todo_id: str) -> None:
             # Switch main repo off try branch if needed
             current = subprocess.run(
                 ["git", "-C", repo, "branch", "--show-current"],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             ).stdout.strip()
             if current == try_branch:
                 base = "master"
-                if subprocess.run(
-                    ["git", "-C", repo, "show-ref", "--verify", "--quiet", "refs/heads/master"],
-                    capture_output=True,
-                ).returncode != 0:
+                if (
+                    subprocess.run(
+                        [
+                            "git",
+                            "-C",
+                            repo,
+                            "show-ref",
+                            "--verify",
+                            "--quiet",
+                            "refs/heads/master",
+                        ],
+                        capture_output=True,
+                    ).returncode
+                    != 0
+                ):
                     base = "main"
-                subprocess.run(["git", "-C", repo, "checkout", base], capture_output=True)
-            subprocess.run(["git", "-C", repo, "branch", "-D", try_branch], capture_output=True)
+                subprocess.run(
+                    ["git", "-C", repo, "checkout", base], capture_output=True
+                )
+            subprocess.run(
+                ["git", "-C", repo, "branch", "-D", try_branch], capture_output=True
+            )
             console.print(f"[dim]Deleted {try_branch}[/]")
 
 
 # --- Claude session launching -----------------------------------------------
+
 
 def launch_claude(todo_id: str, session_id: str = "") -> None:
     """Launch claude with plan context. Replaces current process."""
@@ -354,6 +520,7 @@ def launch_claude(todo_id: str, session_id: str = "") -> None:
     # Parent context
     if parent_id:
         from td_cli.data import get_todo as _get
+
         parent = _get(parent_id)
         if parent:
             context += f"\nParent: {parent['title']}"
@@ -370,15 +537,23 @@ def launch_claude(todo_id: str, session_id: str = "") -> None:
 
     args = ["claude"]
     if session_id:
-        # Check session file exists
-        encoded_cwd = os.getcwd().replace("/", "-")
-        project_dir = os.path.expanduser(f"~/.claude/projects/{encoded_cwd}")
-        session_file = f"{project_dir}/{session_id}.jsonl"
-        if os.path.isfile(session_file):
+        # Check session file exists — use stored session_cwd as a hint for
+        # the project directory encoding, with glob fallback for worktree
+        # paths where Claude Code's encoding differs from a simple replace.
+        session_cwd = todo.get("session_cwd", "") if todo else ""
+        hint = session_cwd if session_cwd else os.getcwd()
+        session_file = _find_session_file(session_id, hint)
+        if session_file:
+            # Switch to the directory where the session lives so Claude can
+            # find and resume it.
+            if session_cwd and os.path.isdir(session_cwd):
+                os.chdir(session_cwd)
             console.print(f"[green]◉[/] Resuming session [dim]{session_id}[/]")
             args += ["--resume", session_id]
         else:
-            console.print("[yellow]◉[/] Previous session not found on disk. Starting fresh session.")
+            console.print(
+                "[yellow]◉[/] Previous session not found on disk. Starting fresh session."
+            )
             session_id = str(uuid.uuid4())
             cwd = os.getcwd()
             todos = read_todos()
@@ -420,10 +595,12 @@ def start_session(todo_id: str, mode: str = "") -> None:
         if not session_cwd or not os.path.isdir(session_cwd):
             # Try to discover from Claude session file
             import glob
+
             pattern = os.path.expanduser(f"~/.claude/projects/*/{session_id}.jsonl")
             files = glob.glob(pattern)
             if files:
                 import json
+
                 with open(files[0]) as f:
                     for line in f:
                         try:
@@ -435,7 +612,9 @@ def start_session(todo_id: str, mode: str = "") -> None:
                             continue
 
             if not session_cwd or not os.path.isdir(session_cwd):
-                console.print(f"[red]Error:[/] Session [dim]{session_id}[/] has no saved directory.")
+                console.print(
+                    f"[red]Error:[/] Session [dim]{session_id}[/] has no saved directory."
+                )
                 raise SystemExit(1)
 
             # Backfill
@@ -458,12 +637,10 @@ def start_session(todo_id: str, mode: str = "") -> None:
             if choice and choice.startswith("Switch"):
                 os.chdir(session_cwd)
             elif choice and choice.startswith("Move"):
-                old_encoded = session_cwd.replace("/", "-")
-                new_encoded = os.getcwd().replace("/", "-")
-                old_dir = os.path.expanduser(f"~/.claude/projects/{old_encoded}")
+                old_file = _find_session_file(session_id, session_cwd)
+                new_encoded = os.getcwd().replace("/", "-").replace(".", "-")
                 new_dir = os.path.expanduser(f"~/.claude/projects/{new_encoded}")
-                old_file = f"{old_dir}/{session_id}.jsonl"
-                if os.path.isfile(old_file):
+                if old_file:
                     os.makedirs(new_dir, exist_ok=True)
                     os.rename(old_file, f"{new_dir}/{session_id}.jsonl")
                     console.print("[green]✓[/] Moved session to current directory.")
@@ -516,11 +693,26 @@ def start_session(todo_id: str, mode: str = "") -> None:
             require_repo()
             repo = REPO_ROOT
             os.makedirs(os.path.dirname(wt_path), exist_ok=True)
-            if branch and subprocess.run(
-                ["git", "-C", repo, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
-                capture_output=True,
-            ).returncode == 0:
-                subprocess.run(["git", "-C", repo, "worktree", "add", wt_path, branch], capture_output=True)
+            if (
+                branch
+                and subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        repo,
+                        "show-ref",
+                        "--verify",
+                        "--quiet",
+                        f"refs/heads/{branch}",
+                    ],
+                    capture_output=True,
+                ).returncode
+                == 0
+            ):
+                subprocess.run(
+                    ["git", "-C", repo, "worktree", "add", wt_path, branch],
+                    capture_output=True,
+                )
             else:
                 console.print(f"[red]Error:[/] Branch '{branch}' no longer exists.")
                 raise SystemExit(1)
@@ -537,11 +729,16 @@ def start_session(todo_id: str, mode: str = "") -> None:
     # Validate branch
     wt_branch = subprocess.run(
         ["git", "-C", wt_path, "branch", "--show-current"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
     if branch and wt_branch and wt_branch != branch:
-        console.print(f"[yellow]Warning:[/] Worktree is on branch '{wt_branch}', todo expects '{branch}'.")
+        console.print(
+            f"[yellow]Warning:[/] Worktree is on branch '{wt_branch}', todo expects '{branch}'."
+        )
         if typer.confirm(f"Switch to {branch}?", default=True):
-            subprocess.run(["git", "-C", wt_path, "checkout", branch], capture_output=True)
+            subprocess.run(
+                ["git", "-C", wt_path, "checkout", branch], capture_output=True
+            )
 
     launch_claude(todo_id, session_id)

@@ -33,12 +33,11 @@ def _arg(val):  # noqa: ANN001
 
 
 def _version_str() -> str:
-    here = Path(__file__).resolve().parent
-    for parent in [here, here.parent, here.parent.parent]:
-        v = parent / "VERSION"
-        if v.exists():
-            return v.read_text().strip()
-    return "dev"
+    from importlib.metadata import version, PackageNotFoundError
+    try:
+        return version("td")
+    except PackageNotFoundError:
+        return "dev"
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +335,9 @@ def _archive_todo(todo_id: str) -> None:
         # Only move if it's a direct child of NOTES_DIR (not a subtask nested deeper)
         if notes_dir.is_dir() and notes_dir.parent == NOTES_DIR:
             dest = DONE_DIR / notes_dir.name
+            if dest.exists():
+                import shutil
+                shutil.rmtree(dest)
             notes_dir.rename(dest)
             # Update notes_path for this todo and all descendants
             old_prefix = str(notes_dir)
@@ -1318,7 +1320,7 @@ def _build_session_lines(query: str = "") -> str:
                     item.get("text", "") for item in content
                     if isinstance(item, dict) and item.get("type", "text") == "text"
                 )
-            if len(content) > 15 and not content.startswith("<"):
+            if content and not content.startswith("<"):
                 msgs.append(content[:120])
 
         if not msgs:
