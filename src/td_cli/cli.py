@@ -429,33 +429,34 @@ def _archive_todo(todo_id: str) -> None:
         if typer.confirm("Remove worktree and branch?", default=False):
             repo = REPO_ROOT
             if repo:
-                if wt_path and os.path.isdir(wt_path):
-                    subprocess.run(
-                        ["git", "-C", repo, "worktree", "remove", wt_path, "--force"],
-                        capture_output=True,
-                    )
-                    stderr.print("[dim]Removed worktree[/]")
-                if (
-                    branch
-                    and subprocess.run(
-                        [
-                            "git",
-                            "-C",
-                            repo,
-                            "show-ref",
-                            "--verify",
-                            "--quiet",
-                            f"refs/heads/{branch}",
-                        ],
-                        capture_output=True,
-                    ).returncode
-                    == 0
-                ):
-                    subprocess.run(
-                        ["git", "-C", repo, "branch", "-D", branch],
-                        capture_output=True,
-                    )
-                    stderr.print(f"[dim]Deleted branch {branch}[/]")
+                with stderr.status("[dim]Cleaning up…[/]"):
+                    if wt_path and os.path.isdir(wt_path):
+                        subprocess.run(
+                            ["git", "-C", repo, "worktree", "remove", wt_path, "--force"],
+                            capture_output=True,
+                        )
+                        stderr.print("[dim]Removed worktree[/]")
+                    if (
+                        branch
+                        and subprocess.run(
+                            [
+                                "git",
+                                "-C",
+                                repo,
+                                "show-ref",
+                                "--verify",
+                                "--quiet",
+                                f"refs/heads/{branch}",
+                            ],
+                            capture_output=True,
+                        ).returncode
+                        == 0
+                    ):
+                        subprocess.run(
+                            ["git", "-C", repo, "branch", "-D", branch],
+                            capture_output=True,
+                        )
+                        stderr.print(f"[dim]Deleted branch {branch}[/]")
 
 
 @app.command(rich_help_panel=_NON_INTERACTIVE)
