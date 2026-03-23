@@ -8,68 +8,17 @@ You have the `td` CLI installed and available in your PATH. **Always use `td` co
 
 If there is no `# Current Todo` block in your context, run `td list` to discover active todos.
 
-## CLI Command Reference
+## CLI Commands
 
-All commands below are non-interactive and safe to run via Bash.
+Run `td <command> --help` for full usage and flags. All commands below are non-interactive and safe to call via Bash.
 
-### Creating todos
-
-```
-td new "title"                  # Create a new todo
-td new -b "title"               # Create a backlog todo
-td new -c <parent> "title"      # Create as subtask under parent (ID or name)
-td split <parent-id> "title"    # Alias: create subtask under parent
-```
-
-### Completing & organizing
-
-```
-td done <id>                    # Mark a todo as done
-td bump <id>                    # Toggle between TODO and backlog
-td rename <id> "new title"      # Rename a todo
-td delete <id> --force          # Delete a todo and all its data
-```
-
-### Viewing & querying
-
-```
-td list                         # List all active todos (tree view)
-td list --json                  # List active todos as JSON array
-td archive                      # Show completed todos
-td get <id>                     # Print single todo as JSON (shows parent_id, branch, worktree, links, etc.)
-td show <id>                    # Print the filesystem path to a todo's plan.md
-```
-
-### Plans
-
-```
-td plan <id>                    # Print plan.md contents to stdout
-td plan <id> "text"             # Append text to plan.md
-td plan <id> -u "text"          # Same as above (explicit --update flag)
-td plan <id> -r <file>          # Replace plan.md with contents of <file>
-```
-
-### Linking external resources
-
-```
-td link <id> <url|branch>       # Link a Linear ticket, GitHub PR/branch URL, local branch name, or file path
-```
-
-### Worktree operations
-
-```
-td try <id>                     # Apply worktree diff to a try branch on main repo
-td take <id>                    # Cherry-pick try branch changes back into worktree
-td sync                         # Two-way sync: create/remove todos and dirs
-td sync -n                      # Dry-run sync (preview only)
-```
-
-### Admin
-
-```
-td version                      # Print version
-td settings                     # Print settings file path and contents
-```
+- **Create:** `new`, `split`
+- **Organize:** `done`, `bump`, `rename`, `delete`
+- **Query:** `list`, `list --json`, `archive`, `get`, `show`
+- **Plans:** `plan` (view, append, replace)
+- **Link:** `link` (Linear tickets, GitHub PRs, branches, files)
+- **Worktree:** `try`, `take`, `sync`
+- **Admin:** `version`, `settings`
 
 ## Guidelines
 
