@@ -10,7 +10,7 @@ If there is no `# Current Todo` block in your context, run `td list` to discover
 
 ## CLI Commands
 
-Run `td <command> --help` for full usage and flags. All commands below are non-interactive and safe to call via Bash.
+Run `td help` for an overview or `td <command> --help` for full usage and flags. All commands below are non-interactive and safe to call via Bash.
 
 - **Create:** `new`, `split`
 - **Organize:** `done`, `bump`, `rename`, `delete`
