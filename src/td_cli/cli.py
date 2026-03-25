@@ -680,12 +680,18 @@ def plan(
         notes_path = ensure_notes(todo_id, todo["title"])
 
     if replace:
-        src = os.path.expanduser(replace)
-        if not os.path.isfile(src):
-            stderr.print(f"[red]Error:[/] file not found: {src}")
-            raise typer.Exit(1)
-        shutil.copy2(src, notes_path)
-        stderr.print(f"[green]✓[/] Replaced [dim]{notes_path}[/] with [dim]{src}[/]")
+        if replace == "-":
+            import sys
+            content = sys.stdin.read()
+            Path(notes_path).write_text(content)
+            stderr.print(f"[green]✓[/] Replaced [dim]{notes_path}[/] from stdin")
+        else:
+            src = os.path.expanduser(replace)
+            if not os.path.isfile(src):
+                stderr.print(f"[red]Error:[/] file not found: {src}")
+                raise typer.Exit(1)
+            shutil.copy2(src, notes_path)
+            stderr.print(f"[green]✓[/] Replaced [dim]{notes_path}[/] with [dim]{src}[/]")
     elif update or text:
         if not text:
             stderr.print("[red]Error:[/] text is required with --update")
