@@ -1,5 +1,6 @@
 """Terminal UI helpers: fzf picker, rich prompt wrappers, action menu."""
 
+import readline  # noqa: F401 — enables arrow-key editing in input()
 import subprocess
 import sys
 from datetime import datetime, timezone
