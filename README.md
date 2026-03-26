@@ -24,8 +24,8 @@ Minimal task and session manager for agentic coding.
 
 - **Session management** — links Claude sessions and working directories to tasks so you can resume exactly where you left off and reduce context overload
 - **Subtasks** — break todos into smaller pieces that inherit their parent's branch, worktree, and links
-- **Plan management** — each task and subtask have their own `plan.md` that gets injected into Claude's system prompt, so context carries across sessions automatically. Subtasks automatically get their parent plans injected too. Works great with Obisdian!
-- **worktree management** — spin up dedicated worktrees and leverage `td try` and `td take`for easy worktree management
+- **Plan management** — each task and subtask have their own `plan.md` that gets injected into Claude's system prompt, so context carries across sessions automatically. Subtasks automatically get their parent plans injected too. Works great with Obsidian!
+- **Worktree management** — spin up dedicated worktrees and leverage `td try` and `td take` for easy worktree management
 - **`td do`** — create a todo and drop into a Claude session directly (run with no name to get a random NYC-inspired name)
 - **`/td` slash command** — manage todos from inside any Claude Code session using the non-interactive cli commands
 - **Linear & GitHub linking** — attach tickets, PRs, and branches to todos; open them from the picker
@@ -290,6 +290,26 @@ worktree (todo/my-feature)          main repo
         |
      continue working
 ```
+
+### Worktree setup script
+
+Use the `worktree_script` setting to run a shell command automatically after a new worktree is created. The command runs with its working directory set to the new worktree, so you can install dependencies, copy environment files, or do any other setup.
+
+Configure it in `~/.config/claude-todo/settings.json`:
+
+```json
+{
+  "worktree_script": "cp ../.env .env && npm install"
+}
+```
+
+Or set via the environment variable:
+
+```bash
+export TODO_WORKTREE_SCRIPT="cp ../.env .env && npm install"
+```
+
+This is useful when each worktree needs its own `node_modules`, virtual environment, or config files that aren't tracked by git.
 
 ### Lifecycle
 
