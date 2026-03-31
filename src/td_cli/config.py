@@ -77,6 +77,7 @@ LINEAR_ORG = os.environ.get("TODO_LINEAR_ORG", "") or _s("linear_org")
 WORKTREE_DIR = os.environ.get("TODO_WORKTREE_DIR", "") or _s("worktree_dir") or ".claude/worktrees"
 BRANCH_PREFIX = os.environ.get("TODO_BRANCH_PREFIX", "") or _s("branch_prefix") or "todo"
 WORKTREE_SCRIPT = os.environ.get("TODO_WORKTREE_SCRIPT", "") or _s("worktree_script")
+CLAUDE_COMMAND = os.environ.get("TODO_CLAUDE_COMMAND", "") or _s("claude_command") or "claude"
 
 QUIET = bool(os.environ.get("TODO_QUIET", ""))
 

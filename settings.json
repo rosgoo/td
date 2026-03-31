@@ -4,5 +4,6 @@
   "editor": "",
   "linear_org": "",
   "worktree_dir": ".claude/worktrees",
-  "branch_prefix": "todo"
+  "branch_prefix": "todo",
+  "claude_command": ""
 }

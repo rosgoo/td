@@ -377,7 +377,8 @@ Settings are saved to `~/.config/claude-todo/settings.json`:
   "linear_org": "",
   "worktree_dir": ".claude/worktrees",
   "branch_prefix": "todo",
-  "worktree_script": ""
+  "worktree_script": "",
+  "claude_command": ""
 }
 ```
 
@@ -390,8 +391,9 @@ Settings are saved to `~/.config/claude-todo/settings.json`:
 | `worktree_dir` | Worktree directory relative to repo root | `.claude/worktrees` |
 | `branch_prefix` | Prefix for auto-created branches | `todo` |
 | `worktree_script` | Shell command to run after creating a worktree (runs with cwd set to the new worktree) | _(disabled)_ |
+| `claude_command` | Command used to launch Claude (e.g. `"claude --enable-auto-mode"`) | `claude` |
 
-Environment variables override settings: `TODO_DATA_DIR`, `TODO_REPO`, `TODO_EDITOR`, `TODO_LINEAR_ORG`, `TODO_WORKTREE_DIR`, `TODO_BRANCH_PREFIX`, `TODO_WORKTREE_SCRIPT`.
+Environment variables override settings: `TODO_DATA_DIR`, `TODO_REPO`, `TODO_EDITOR`, `TODO_LINEAR_ORG`, `TODO_WORKTREE_DIR`, `TODO_BRANCH_PREFIX`, `TODO_WORKTREE_SCRIPT`, `TODO_CLAUDE_COMMAND`.
 
 ---
 

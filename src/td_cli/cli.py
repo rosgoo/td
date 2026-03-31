@@ -1710,6 +1710,10 @@ def init() -> None:
     wt_script = prompt_input("Worktree script", default=cur.get("worktree_script", ""))
     stderr.print()
 
+    stderr.print("  [bold]claude_command[/] — Command to launch Claude (e.g. 'claude --enable-auto-mode')")
+    claude_cmd = prompt_input("Claude command", default=cur.get("claude_command", "claude"))
+    stderr.print()
+
     settings_dir.mkdir(parents=True, exist_ok=True)
     SETTINGS_PATH.write_text(
         json.dumps(
@@ -1721,6 +1725,7 @@ def init() -> None:
                 "worktree_dir": wt_dir or ".claude/worktrees",
                 "branch_prefix": bp or "todo",
                 "worktree_script": wt_script,
+                "claude_command": claude_cmd if claude_cmd != "claude" else "",
             },
             indent=2,
         )

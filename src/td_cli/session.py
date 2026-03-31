@@ -2,12 +2,13 @@
 
 import glob as _glob
 import os
+import shlex
 import subprocess
 import uuid
 
 import typer
 
-from td_cli.config import BRANCH_PREFIX, REPO_ROOT, WORKTREE_SCRIPT, console
+from td_cli.config import BRANCH_PREFIX, CLAUDE_COMMAND, REPO_ROOT, WORKTREE_SCRIPT, console
 from td_cli.data import (
     get_todo,
     read_todos,
@@ -544,7 +545,9 @@ def launch_claude(todo_id: str, session_id: str = "") -> None:
     if notes_path:
         context += f"\n\nWhen in plan mode, always write your plan to {notes_path} before exiting plan mode."
 
-    args = ["claude"]
+    cmd_parts = shlex.split(CLAUDE_COMMAND)
+    executable = cmd_parts[0]
+    args = list(cmd_parts)
     if session_id:
         # Check session file exists — use stored session_cwd as a hint for
         # the project directory encoding, with glob fallback for worktree
@@ -585,7 +588,7 @@ def launch_claude(todo_id: str, session_id: str = "") -> None:
         args += ["--session-id", session_id]
 
     args += ["--append-system-prompt", context]
-    os.execvp("claude", args)
+    os.execvp(executable, args)
 
 
 def start_session(todo_id: str, mode: str = "") -> None:
