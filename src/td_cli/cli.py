@@ -2306,16 +2306,14 @@ def _select_todo(todo_id: str) -> None:
         ):
             options.append("Take from try branch")
     options.append("Mark as done")
-    options.append("Move")
     options.append("Add subtask")
-    options.append("Rename")
     # "Open" submenu groups plan/linear/github/summary links
     summary_path = os.path.join(os.path.dirname(notes_path), "summary.md")
     has_summary = os.path.isfile(summary_path)
     options.append("Open")
     if session_id:
         options.append("Regenerate summary" if has_summary else "Summarize")
-    options.extend(["Link", "Back"])
+    options.extend(["Admin", "Back"])
 
     choice = action_menu("What next?", *options)
     if not choice:
@@ -2333,12 +2331,8 @@ def _select_todo(todo_id: str) -> None:
         take_worktree(todo_id)
     elif choice == "Mark as done":
         _archive_todo(todo_id)
-    elif choice == "Move":
-        move(todo_id=todo_id)
     elif choice == "Add subtask":
         split(parent_id=todo_id)
-    elif choice == "Rename":
-        rename(todo_id=todo_id)
     elif choice == "Open":
         open_opts: list[str] = ["Plan"]
         if has_summary:
@@ -2364,8 +2358,23 @@ def _select_todo(todo_id: str) -> None:
                 open_url(url)
     elif choice in ("Summarize", "Regenerate summary"):
         _summarize_todo(todo_id)
-    elif choice == "Link":
-        link(arg1=todo_id)
+    elif choice == "Admin":
+        admin_opts = [
+            "Move",
+            "Delete",
+            "Rename",
+            "Link",
+            "Back",
+        ]
+        admin_choice = action_menu("Admin", *admin_opts)
+        if admin_choice == "Move":
+            move(todo_id=todo_id)
+        elif admin_choice == "Delete":
+            delete(todo_id=todo_id)
+        elif admin_choice == "Rename":
+            rename(todo_id=todo_id)
+        elif admin_choice == "Link":
+            link(arg1=todo_id)
 
 
 def _picker() -> None:
