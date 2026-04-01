@@ -8,7 +8,13 @@ import uuid
 
 import typer
 
-from td_cli.config import BRANCH_PREFIX, CLAUDE_COMMAND, REPO_ROOT, WORKTREE_SCRIPT, console
+from td_cli.config import (
+    BRANCH_PREFIX,
+    CLAUDE_COMMAND,
+    REPO_ROOT,
+    WORKTREE_SCRIPT,
+    console,
+)
 from td_cli.data import (
     get_todo,
     read_todos,
@@ -16,7 +22,7 @@ from td_cli.data import (
     write_todos,
 )
 from td_cli.git import require_repo, validate_worktree, worktree_dir
-from td_cli.ui import prompt_choose
+from td_cli.ui import action_menu, confirm
 
 
 def _find_session_file(session_id: str, hint_cwd: str = "") -> str | None:
@@ -156,10 +162,14 @@ def init_worktree_for_todo(todo_id: str) -> str:
     if WORKTREE_SCRIPT:
         console.print(f"[dim]Running worktree script: {WORKTREE_SCRIPT}[/]")
         result = subprocess.run(
-            WORKTREE_SCRIPT, shell=True, cwd=wt_path,
+            WORKTREE_SCRIPT,
+            shell=True,
+            cwd=wt_path,
         )
         if result.returncode != 0:
-            console.print(f"[yellow]Warning:[/] Worktree script exited with code {result.returncode}")
+            console.print(
+                f"[yellow]Warning:[/] Worktree script exited with code {result.returncode}"
+            )
 
     # Update todo record
     todos = read_todos()
@@ -271,7 +281,7 @@ def try_worktree(todo_id: str) -> None:
         ).returncode
         == 0
     ):
-        if not typer.confirm(
+        if not confirm(
             f"Branch '{try_branch}' already exists. Replace it?", default=False
         ):
             return
@@ -457,7 +467,7 @@ def take_worktree(todo_id: str) -> None:
 
     if not failed:
         console.print(f"[green]✓[/] Cherry-picked {picked} commit(s) into {branch}")
-        if typer.confirm(f"Delete try branch '{try_branch}'?", default=True):
+        if confirm(f"Delete try branch '{try_branch}'?", default=True):
             # Switch main repo off try branch if needed
             current = subprocess.run(
                 ["git", "-C", repo, "branch", "--show-current"],
@@ -639,7 +649,7 @@ def start_session(todo_id: str, mode: str = "") -> None:
         real_cwd = os.path.realpath(os.getcwd())
         real_scwd = os.path.realpath(session_cwd)
         if real_cwd != real_scwd:
-            choice = prompt_choose(
+            choice = action_menu(
                 f"Session was started in {session_cwd}",
                 "Switch to original directory",
                 "Move session here",
@@ -675,16 +685,14 @@ def start_session(todo_id: str, mode: str = "") -> None:
                 text=True,
             ).stdout.strip()
             if current_branch and current_branch != branch:
-                choice = prompt_choose(
+                choice = action_menu(
                     f"On branch '{current_branch}', todo expects '{branch}'",
                     f"Switch to {branch}",
                     f"Stay on {current_branch}",
                     "Cancel",
                 )
                 if choice and choice.startswith("Switch"):
-                    subprocess.run(
-                        ["git", "checkout", branch], capture_output=True
-                    )
+                    subprocess.run(["git", "checkout", branch], capture_output=True)
                 elif choice and choice.startswith("Cancel"):
                     return
 
@@ -702,7 +710,7 @@ def start_session(todo_id: str, mode: str = "") -> None:
             launch_claude(todo_id, session_id)
             return
         else:
-            choice = prompt_choose(
+            choice = action_menu(
                 "No worktree — how to start?",
                 "Create a worktree (new branch)",
                 "Start Claude in current directory",
@@ -722,7 +730,7 @@ def start_session(todo_id: str, mode: str = "") -> None:
     # Case 3: Worktree exists
     if not validate_worktree(wt_path):
         console.print(f"[yellow]Warning:[/] Worktree at {wt_path} is missing.")
-        if typer.confirm("Recreate worktree?", default=False):
+        if confirm("Recreate worktree?", default=False):
             require_repo()
             repo = REPO_ROOT
             os.makedirs(os.path.dirname(wt_path), exist_ok=True)
@@ -756,7 +764,7 @@ def start_session(todo_id: str, mode: str = "") -> None:
     real_wt = os.path.realpath(wt_path)
     real_cwd = os.path.realpath(os.getcwd())
     if real_wt != real_cwd:
-        if typer.confirm(f"Session is in {wt_path}. Switch directory?", default=True):
+        if confirm(f"Session is in {wt_path}. Switch directory?", default=True):
             os.chdir(wt_path)
 
     # Validate branch
@@ -769,7 +777,7 @@ def start_session(todo_id: str, mode: str = "") -> None:
         console.print(
             f"[yellow]Warning:[/] Worktree is on branch '{wt_branch}', todo expects '{branch}'."
         )
-        if typer.confirm(f"Switch to {branch}?", default=True):
+        if confirm(f"Switch to {branch}?", default=True):
             subprocess.run(
                 ["git", "-C", wt_path, "checkout", branch], capture_output=True
             )

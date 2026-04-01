@@ -13,16 +13,22 @@ If there is no `# Current Todo` block in your context, run `td list` to discover
 Run `td help` for an overview or `td <command> --help` for full usage and flags. All commands below are non-interactive and safe to call via Bash.
 
 - **Create:** `new`, `split`
-- **Organize:** `done`, `bump`, `rename`, `delete`
+- **Organize:** `done`, `move`, `rename`, `delete`
 - **Query:** `list`, `list --json`, `archive`, `get`, `show`
 - **Plans:** `plan` (view, append, replace)
 - **Link:** `link` (Linear tickets, GitHub PRs, branches, files)
 - **Worktree:** `try`, `take`, `sync`
 - **Admin:** `version`, `settings`
 
+## Summaries
+
+Each todo may have a `summary.md` colocated with its `plan.md`. Summaries are generated automatically when running `td done` (if the todo has a session), or on-demand from the interactive picker's "Summarize" action.
+
+If the user asks you to summarize the current conversation, write the summary to `summary.md` next to the todo's `plan.md`. Use `td show <id>` to find the plan path, then write `summary.md` in the same directory.
+
 ## Guidelines
 
-- **Use the CLI, not the filesystem.** Do not read/write `~/td/todo/...` files directly. Use `td plan`, `td get`, `td show`, etc. The only exception is when you need to read a plan.md that `td show <id>` pointed you to.
+- **Use the CLI, not the filesystem.** Do not read/write `~/td/todo/...` files directly. Use `td plan`, `td get`, `td show`, etc. The only exception is when you need to read a plan.md or summary.md that `td show <id>` pointed you to.
 - **Check context first** — your system prompt may already have `Todo ID:`, `Plan:`, `Branch:`, etc. for the current todo. Use those values directly instead of running commands to rediscover them.
 - IDs are human-readable slugs (e.g., `fix-document-audit`) and can be shortened to a unique prefix (e.g., `td done fix-doc`).
 - Use `td plan <id> "text"` to append important decisions or context to the current todo's plan.
@@ -31,3 +37,4 @@ Run `td help` for an overview or `td <command> --help` for full usage and flags.
 - Use `td get <id>` to inspect a todo's full details (branch, worktree, links, etc.).
 - Read a todo's plan (via `td plan <id>` or `td show <id>` then Read) to understand its full context. **For subtasks, also check the parent's plan** — parent plans often contain high-level context, constraints, and decisions that apply to all subtasks. Walk up the hierarchy (`td get <id>` shows `parent_id`).
 - Use `td split` to break large todos into subtasks when the user's work has distinct parts.
+- Use `td move <id> --under <parent>` to make an existing todo a subtask of another. Use `td move <id> --backlog` or `--todo` to change groups. Running `td move <id>` without flags shows an interactive menu.

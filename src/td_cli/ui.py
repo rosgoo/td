@@ -1,12 +1,10 @@
 """Terminal UI helpers: fzf picker, rich prompt wrappers, action menu."""
 
-import readline  # noqa: F401 — enables arrow-key editing in input()
 import subprocess
 import sys
 from datetime import datetime, timezone
 
 import typer
-from rich.prompt import Prompt
 
 from td_cli.config import console
 from td_cli.data import read_todos
@@ -39,27 +37,37 @@ def check_fzf() -> None:
 # --- Prompt wrappers --------------------------------------------------------
 
 def prompt_input(placeholder: str, default: str = "") -> str:
-    """Prompt for text input. Returns empty string on cancel."""
-    try:
-        return Prompt.ask(f"[dim]{placeholder}[/]", default=default, console=console)
-    except (KeyboardInterrupt, EOFError):
+    """Prompt for text input via fzf. Returns empty string on cancel (Esc)."""
+    check_fzf()
+    args = [
+        FZF, "--print-query", "--layout=reverse", "--height=~3",
+        "--no-info", "--no-scrollbar", "--border",
+        "--prompt", f"{placeholder}: ",
+        "--header", "esc to cancel",
+    ]
+    if default:
+        args += ["--query", default]
+    result = subprocess.run(
+        args, input="", capture_output=True, text=True,
+    )
+    if result.returncode not in (0, 1):
+        # rc 130 = Esc/Ctrl-C
         return ""
+    # --print-query puts the query on the first line
+    query = result.stdout.split("\n")[0].strip()
+    return query
 
 
-def prompt_choose(header: str, *options: str) -> str | None:
-    """Show numbered options and let user pick. Returns option text or None."""
-    console.print(f"\n[dim]{header}[/]")
-    for i, opt in enumerate(options, 1):
-        console.print(f"  {i}  {opt}")
-    console.print()
-    try:
-        choice = Prompt.ask("[dim]Choice[/]", console=console)
-        idx = int(choice) - 1
-        if 0 <= idx < len(options):
-            return options[idx]
-    except (ValueError, KeyboardInterrupt, EOFError):
-        pass
-    return None
+
+def confirm(prompt: str, default: bool = True) -> bool | None:
+    """Yes/No confirmation via fzf. Returns True/False, or None on Esc."""
+    if default:
+        choice = action_menu(prompt, "Yes", "No")
+    else:
+        choice = action_menu(prompt, "No", "Yes")
+    if choice is None:
+        return None
+    return choice == "Yes"
 
 
 # --- fzf wrappers ----------------------------------------------------------

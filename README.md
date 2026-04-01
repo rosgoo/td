@@ -29,6 +29,7 @@ Minimal task and session manager for agentic coding.
 - **`td do`** — create a todo and drop into a Claude session directly (run with no name to get a random NYC-inspired name)
 - **`/td` slash command** — manage todos from inside any Claude Code session using the non-interactive cli commands
 - **Linear & GitHub linking** — attach tickets, PRs, and branches to todos; open them from the picker
+- **Session summaries** — auto-generates a `summary.md` when marking a todo as done, or on-demand from the picker. Uses `claude -p` with Haiku for fast, concise summaries of what was accomplished
 - **Pre-compact hook** — automatically snapshots conversation context into `plan.md` before Claude compacts, so notes are never lost
 - **Local first** — all storage is done in markdown and json reducing dependencies
 
@@ -313,7 +314,7 @@ This is useful when each worktree needs its own `node_modules`, virtual environm
 
 ### Lifecycle
 
-- **Done** — `td done` optionally cleans up the worktree and branch
+- **Done** — `td done` generates a session summary (if linked to a session) and optionally cleans up the worktree and branch
 - **Delete** — `td delete` removes the worktree, branch, notes, and todo record
 
 ---
@@ -403,7 +404,9 @@ Environment variables override settings: `TODO_DATA_DIR`, `TODO_REPO`, `TODO_EDI
 ~/td/
   todos.json              # All todo records
   todo/
-    <title>/plan.md       # Notes for each todo (+ session notes appended by hooks)
+    <title>/
+      plan.md             # Notes for each todo (+ session notes appended by hooks)
+      summary.md          # Session summary (generated on done or on-demand)
 ```
 
 Each todo record contains:

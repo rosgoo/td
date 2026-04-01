@@ -363,6 +363,87 @@ def split(
 
 
 # ---------------------------------------------------------------------------
+# td adopt helper (used by td move --under)
+# ---------------------------------------------------------------------------
+
+
+def _adopt_under(child_id: str, parent_id: str) -> None:
+    """Reparent an existing todo under a new parent."""
+    import shutil
+
+    from td_cli.config import NOTES_DIR
+    from td_cli.data import (
+        get_todo,
+        notes_folder_name,
+        read_todos,
+        write_todos,
+    )
+
+    if child_id == parent_id:
+        stderr.print("[red]Cannot move a todo under itself.[/]")
+        raise typer.Exit(1)
+
+    child = get_todo(child_id)
+    parent = get_todo(parent_id)
+    if not child or not parent:
+        raise typer.Exit(1)
+
+    # Prevent circular adoption — walk up from parent to ensure child isn't an ancestor
+    todos = read_todos()
+    by_id = {t["id"]: t for t in todos}
+    cur = parent_id
+    while cur:
+        if cur == child_id:
+            stderr.print("[red]Cannot move: would create a cycle.[/]")
+            raise typer.Exit(1)
+        cur = by_id.get(cur, {}).get("parent_id", "")
+
+    # Move notes directory under parent's notes dir
+    parent_notes = parent.get("notes_path", "")
+    parent_notes_dir = Path(parent_notes).parent if parent_notes else NOTES_DIR
+    old_notes_path = child.get("notes_path", "")
+
+    new_folder = notes_folder_name(child_id, child["title"], parent_notes_dir)
+    new_notes_dir = parent_notes_dir / new_folder
+
+    if old_notes_path:
+        old_notes_dir = Path(old_notes_path).parent
+        if old_notes_dir.exists() and old_notes_dir != new_notes_dir:
+            new_notes_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(old_notes_dir), str(new_notes_dir))
+
+    new_plan = new_notes_dir / "plan.md" if new_notes_dir.exists() else ""
+
+    # Update the todo entry
+    for t in todos:
+        if t["id"] == child_id:
+            t["parent_id"] = parent_id
+            if new_plan:
+                t["notes_path"] = str(new_plan)
+            # Inherit parent's branch/worktree if child has none
+            if not t.get("branch") and parent.get("branch"):
+                t["branch"] = parent["branch"]
+            if not t.get("worktree_path") and parent.get("worktree_path"):
+                t["worktree_path"] = parent["worktree_path"]
+            break
+
+    # Also update any descendants whose notes_path pointed under the old dir
+    if old_notes_path:
+        old_dir_str = str(Path(old_notes_path).parent)
+        new_dir_str = str(new_notes_dir)
+        for t in todos:
+            np = t.get("notes_path", "")
+            if np and np.startswith(old_dir_str + "/") and t["id"] != child_id:
+                t["notes_path"] = np.replace(old_dir_str, new_dir_str, 1)
+
+    write_todos(todos)
+
+    stderr.print(
+        f"[green]✓[/] Moved [bold]{child['title']}[/] under [bold]{parent['title']}[/]"
+    )
+
+
+# ---------------------------------------------------------------------------
 # td done [id]
 # ---------------------------------------------------------------------------
 
@@ -371,10 +452,16 @@ def _archive_todo(todo_id: str) -> None:
     """Mark a todo and its descendants as done, with optional cleanup."""
     from td_cli.config import DONE_DIR, NOTES_DIR, REPO_ROOT
     from td_cli.data import get_todo, read_todos, write_todos
+    from td_cli.ui import confirm
 
     todo = get_todo(todo_id)
     if not todo:
         return
+
+    # Generate summary before archiving (while transcript is still accessible)
+    if todo.get("session_id"):
+        _summarize_todo(todo_id)
+
     title = todo["title"]
     wt_path = todo.get("worktree_path", "")
     branch = todo.get("branch", "")
@@ -426,13 +513,21 @@ def _archive_todo(todo_id: str) -> None:
 
     # Offer cleanup
     if wt_path or branch:
-        if typer.confirm("Remove worktree and branch?", default=False):
+        if confirm("Remove worktree and branch?", default=False):
             repo = REPO_ROOT
             if repo:
                 with stderr.status("[dim]Cleaning up…[/]"):
                     if wt_path and os.path.isdir(wt_path):
                         subprocess.run(
-                            ["git", "-C", repo, "worktree", "remove", wt_path, "--force"],
+                            [
+                                "git",
+                                "-C",
+                                repo,
+                                "worktree",
+                                "remove",
+                                wt_path,
+                                "--force",
+                            ],
                             capture_output=True,
                         )
                         stderr.print("[dim]Removed worktree[/]")
@@ -682,6 +777,7 @@ def plan(
     if replace:
         if replace == "-":
             import sys
+
             content = sys.stdin.read()
             Path(notes_path).write_text(content)
             stderr.print(f"[green]✓[/] Replaced [dim]{notes_path}[/] from stdin")
@@ -691,7 +787,9 @@ def plan(
                 stderr.print(f"[red]Error:[/] file not found: {src}")
                 raise typer.Exit(1)
             shutil.copy2(src, notes_path)
-            stderr.print(f"[green]✓[/] Replaced [dim]{notes_path}[/] with [dim]{src}[/]")
+            stderr.print(
+                f"[green]✓[/] Replaced [dim]{notes_path}[/] with [dim]{src}[/]"
+            )
     elif update or text:
         if not text:
             stderr.print("[red]Error:[/] text is required with --update")
@@ -737,7 +835,7 @@ def show(todo_id: str = typer.Argument(None)) -> None:
 
 
 # ---------------------------------------------------------------------------
-# td bump [id]
+# td move [id] [--backlog | --todo | --under <parent>]
 # ---------------------------------------------------------------------------
 
 
@@ -771,24 +869,79 @@ def _bump_group(todo_id: str, new_group: str) -> None:
             stderr.print(f"  [dim]· {t['title']}[/]")
 
 
-@app.command(rich_help_panel=_NON_INTERACTIVE)
-def bump(todo_id: str = typer.Argument(None)) -> None:
-    """Toggle a todo between TODO and backlog."""
+@app.command(rich_help_panel=_INTERACTIVE)
+def move(
+    todo_id: str = typer.Argument(None),
+    backlog: bool = typer.Option(False, "--backlog", "-b", help="Move to backlog."),
+    todo: bool = typer.Option(False, "--todo", "-t", help="Move to TODO."),
+    under: str = typer.Option(
+        None,
+        "--under",
+        "-u",
+        help="Move under a parent todo (ID/name, or '?' to pick).",
+    ),
+) -> None:
+    """Move a todo to backlog, TODO, or under another todo."""
     from td_cli.data import get_todo, resolve_id
-    from td_cli.ui import pick_todo
+    from td_cli.ui import action_menu, pick_todo
+
+    todo_id, backlog, todo, under = (
+        _arg(todo_id),
+        _arg(backlog),
+        _arg(todo),
+        _arg(under),
+    )
 
     if not todo_id:
-        todo_id = pick_todo("Select todo to bump", "bump ❯ ")
+        todo_id = pick_todo("Select todo to move", "move ❯ ")
         if not todo_id:
             raise typer.Abort()
     else:
         todo_id = resolve_id(todo_id)
 
-    todo = get_todo(todo_id)
-    if not todo:
+    t = get_todo(todo_id)
+    if not t:
         raise typer.Exit(1)
-    current = todo.get("group", "todo")
-    _bump_group(todo_id, "todo" if current == "backlog" else "backlog")
+
+    # If a flag was given, execute directly
+    if backlog:
+        _bump_group(todo_id, "backlog")
+        return
+    if todo:
+        _bump_group(todo_id, "todo")
+        return
+    if under is not None:
+        if under == "?":
+            parent_id = pick_todo("Select new parent", "parent ❯ ")
+            if not parent_id:
+                raise typer.Abort()
+        else:
+            parent_id = resolve_id(under)
+        _adopt_under(todo_id, parent_id)
+        return
+
+    # Interactive: show menu
+    current_group = t.get("group", "todo")
+    options = []
+    if current_group == "backlog":
+        options.append("To TODO")
+    else:
+        options.append("To backlog")
+    options.append("Under another todo")
+
+    choice = action_menu(f"Move: {t['title']}", *options)
+    if not choice:
+        raise typer.Abort()
+
+    if choice == "To backlog":
+        _bump_group(todo_id, "backlog")
+    elif choice == "To TODO":
+        _bump_group(todo_id, "todo")
+    elif choice == "Under another todo":
+        parent_id = pick_todo("Select new parent", "parent ❯ ")
+        if not parent_id:
+            raise typer.Abort()
+        _adopt_under(todo_id, parent_id)
 
 
 # ---------------------------------------------------------------------------
@@ -826,7 +979,19 @@ def rename(
     old_title = todo["title"]
 
     if not new_title:
-        new_title = prompt_input("New title", default=old_title)
+        default_title = old_title
+        session_id = todo.get("session_id", "")
+        if session_id:
+            from td_cli.ui import action_menu as _rename_menu
+
+            choice = _rename_menu("Rename source?", "Suggest from session", "Manual")
+            if not choice:
+                raise typer.Abort()
+            if choice == "Suggest from session":
+                suggested = _suggest_title(todo)
+                if suggested:
+                    default_title = suggested
+        new_title = prompt_input("New title", default=default_title)
         if not new_title:
             raise typer.Abort()
 
@@ -868,7 +1033,7 @@ def delete(
     """Delete a todo and all related data."""
     from td_cli.config import REPO_ROOT
     from td_cli.data import DATA_DIR, get_todo, read_todos, resolve_id, write_todos
-    from td_cli.ui import pick_todo
+    from td_cli.ui import confirm, pick_todo
 
     if not todo_id:
         todo_id = pick_todo("Select todo to delete", "delete ❯ ")
@@ -893,7 +1058,8 @@ def delete(
             stderr.print(f"  [dim]Will delete branch: {branch}[/]")
         if notes_path:
             stderr.print(f"  [dim]Will delete plan: {notes_path}[/]")
-        typer.confirm("Delete this todo and all related data?", abort=True)
+        if not confirm("Delete this todo and all related data?", default=False):
+            raise typer.Abort()
 
     repo = REPO_ROOT
     if wt_path and os.path.isdir(wt_path) and repo:
@@ -956,7 +1122,7 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
     """Link a Linear ticket, branch, PR, or plan file."""
     from td_cli.data import get_todo, read_todos, resolve_id, write_todos
     from td_cli.git import extract_github_branch, extract_linear_ticket
-    from td_cli.ui import pick_todo, prompt_choose, prompt_input
+    from td_cli.ui import FZF, action_menu, check_fzf, pick_todo, prompt_input
 
     selected_id = ""
     url = ""
@@ -972,7 +1138,13 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
         selected_id = resolve_id(arg1)
         url = arg2
     elif arg1:
-        if "linear.app" in arg1 or "github.com" in arg1 or "/" in arg1 or arg1.endswith(".md") or arg1.endswith(".txt"):
+        if (
+            "linear.app" in arg1
+            or "github.com" in arg1
+            or "/" in arg1
+            or arg1.endswith(".md")
+            or arg1.endswith(".txt")
+        ):
             url = arg1
         else:
             try:
@@ -1055,7 +1227,7 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
         return
 
     # Interactive link type selector
-    choice = prompt_choose(
+    choice = action_menu(
         "What to link?",
         "Linear ticket",
         "Git branch",
@@ -1102,6 +1274,67 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
                 t["github_pr"] = pr
         write_todos(todos)
         stderr.print(f"[green]✓[/] Linked: [bold]{title}[/] › [cyan]{pr}[/]")
+    elif choice == "Claude session":
+        check_fzf()
+        stderr.print("[dim]Scanning sessions…[/]")
+        lines = _build_session_lines()
+        if not lines:
+            stderr.print("[yellow]No sessions found.[/]")
+            raise typer.Exit()
+        result = subprocess.run(
+            [
+                FZF,
+                "--header",
+                "Select a session to link (ESC to cancel)",
+                "--layout=reverse",
+                "--height=80%",
+                "--with-nth=4..",
+                "--delimiter=\t",
+                "--header-first",
+                "--border",
+                "--ansi",
+                "--no-multi",
+                "--no-sort",
+                "--prompt=link ❯ ",
+                "--preview-window=hidden",
+            ],
+            input=lines,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            raise typer.Abort()
+        parts = result.stdout.strip().split("\t")
+        session_id = parts[0]
+        session_cwd = parts[1] if len(parts) > 1 else ""
+        session_branch = parts[2] if len(parts) > 2 else ""
+        for t in todos:
+            if t["id"] == selected_id:
+                t["session_id"] = session_id
+                t["session_cwd"] = session_cwd
+                if session_branch:
+                    t["branch"] = session_branch
+        write_todos(todos)
+        stderr.print(
+            f"[green]✓[/] Linked: [bold]{title}[/] › [green]◉[/] [dim]{session_id}[/]"
+        )
+        if session_branch:
+            stderr.print(f"  [cyan] [/] Branch: {session_branch}")
+    elif choice == "Plan file":
+        raw = prompt_input("Path to plan file")
+        if not raw:
+            raise typer.Abort()
+        notes_input = (
+            raw.replace("~", str(Path.home()), 1) if raw.startswith("~") else raw
+        )
+        notes_input = str(Path(notes_input).resolve())
+        if not os.path.isfile(notes_input):
+            stderr.print(f"[yellow]Warning:[/] File does not exist yet: {notes_input}")
+        for t in todos:
+            if t["id"] == selected_id:
+                t["notes_path"] = notes_input
+        write_todos(todos)
+        stderr.print(f"[green]✓[/] Linked: [bold]{title}[/] › [dim]{notes_input}[/]")
 
 
 # ---------------------------------------------------------------------------
@@ -1557,7 +1790,6 @@ def _build_session_lines(query: str = "") -> str:
         projects_dir.glob("*/*.jsonl"), key=lambda f: f.stat().st_mtime, reverse=True
     )[:80]
 
-
     now_ts = datetime.now(UTC).timestamp()
     today_start = (
         datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
@@ -1706,12 +1938,18 @@ def init() -> None:
     bp = prompt_input("Branch prefix", default=cur.get("branch_prefix", "todo"))
     stderr.print()
 
-    stderr.print("  [bold]worktree_script[/] — Script to run after creating a worktree (optional)")
+    stderr.print(
+        "  [bold]worktree_script[/] — Script to run after creating a worktree (optional)"
+    )
     wt_script = prompt_input("Worktree script", default=cur.get("worktree_script", ""))
     stderr.print()
 
-    stderr.print("  [bold]claude_command[/] — Command to launch Claude (e.g. 'claude --enable-auto-mode')")
-    claude_cmd = prompt_input("Claude command", default=cur.get("claude_command", "claude"))
+    stderr.print(
+        "  [bold]claude_command[/] — Command to launch Claude (e.g. 'claude --enable-auto-mode')"
+    )
+    claude_cmd = prompt_input(
+        "Claude command", default=cur.get("claude_command", "claude")
+    )
     stderr.print()
 
     settings_dir.mkdir(parents=True, exist_ok=True)
@@ -1842,6 +2080,148 @@ def help_cmd(ctx: typer.Context) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _read_transcript(todo: dict, max_chars: int = 50000) -> str | None:
+    """Extract user/assistant text from a session transcript, capped to max_chars.
+
+    Skips tool calls and system messages to keep the input small and fast.
+    """
+    import json as _json
+
+    from td_cli.session import _find_session_file
+
+    session_id = todo.get("session_id", "")
+    session_cwd = todo.get("session_cwd", "")
+    transcript_path = _find_session_file(session_id, session_cwd)
+    if not transcript_path:
+        stderr.print("[yellow]Could not find transcript for this session.[/]")
+        return None
+
+    lines: list[str] = []
+    total = 0
+    with open(transcript_path) as f:
+        for raw_line in f:
+            try:
+                msg = _json.loads(raw_line)
+            except _json.JSONDecodeError:
+                continue
+            role = msg.get("type", "")
+            if role not in ("user", "assistant"):
+                continue
+            content = msg.get("message", {}).get("content", "")
+            if isinstance(content, list):
+                # Extract only text blocks, skip tool_use/tool_result
+                content = " ".join(
+                    block.get("text", "")
+                    for block in content
+                    if isinstance(block, dict) and block.get("type") == "text"
+                )
+            if not content or not isinstance(content, str):
+                continue
+            entry = f"{role}: {content[:500]}"
+            lines.append(entry)
+            total += len(entry)
+            if total >= max_chars:
+                break
+
+    if not lines:
+        return None
+    return "\n".join(lines)
+
+
+def _suggest_title(todo: dict) -> str | None:
+    """Use claude -p to suggest a short title based on the session transcript."""
+    transcript = _read_transcript(todo)
+    if not transcript:
+        return None
+
+    prompt = (
+        "Read this Claude Code session transcript and suggest a short title "
+        "(under 60 chars) that describes what was worked on. "
+        "Output ONLY the title, nothing else. No quotes, no explanation."
+    )
+
+    with stderr.status("[dim]Generating title suggestion…[/]"):
+        try:
+            result = subprocess.run(
+                ["claude", "-p", "--model", "haiku", "--bare", prompt],
+                input=transcript,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            pass
+        else:
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()[:60]
+
+    stderr.print("[yellow]Could not generate suggestion.[/]")
+    return None
+
+
+def _summarize_todo(todo_id: str) -> None:
+    """Generate a summary.md for a todo by sending its transcript to claude -p."""
+    from td_cli.data import get_todo
+
+    todo = get_todo(todo_id)
+    if not todo:
+        stderr.print("[red]Error:[/] Todo not found.")
+        return
+
+    if not todo.get("session_id"):
+        stderr.print("[yellow]No session linked to this todo.[/]")
+        return
+
+    transcript = _read_transcript(todo)
+    if not transcript:
+        return
+
+    notes_path = todo.get("notes_path", "")
+    if not notes_path:
+        stderr.print("[yellow]No notes path for this todo.[/]")
+        return
+
+    summary_path = os.path.join(os.path.dirname(notes_path), "summary.md")
+    title = todo.get("title", todo_id)
+
+    prompt = (
+        "You are summarizing a Claude Code development session. "
+        "Read the transcript and produce a concise summary with these sections:\n\n"
+        "## Summary\nOne paragraph overview of what was accomplished.\n\n"
+        "## Key Decisions\nBulleted list of important decisions made during the session.\n\n"
+        "## Changes Made\nBulleted list of files changed and what was done.\n\n"
+        "## Open Questions\nAnything unresolved or left for follow-up.\n\n"
+        "Be concise. Skip tool call details — focus on what happened and why."
+    )
+
+    with stderr.status(f"[dim]Summarizing session for [bold]{title}[/]…[/]"):
+        try:
+            result = subprocess.run(
+                ["claude", "-p", "--model", "haiku", "--bare", prompt],
+                input=transcript,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired:
+            stderr.print("[yellow]Summarization timed out.[/]")
+            return
+
+    if result.returncode != 0:
+        stderr.print(f"[red]claude -p failed:[/] {result.stderr.strip()}")
+        return
+
+    summary = result.stdout.strip()
+    if not summary:
+        stderr.print("[yellow]claude -p returned empty output.[/]")
+        return
+
+    with open(summary_path, "w") as f:
+        f.write(f"# {title}\n\n{summary}\n")
+
+    stderr.print(f"[green]✓[/] Summary written to [dim]{summary_path}[/]")
+
+
 def _select_todo(todo_id: str) -> None:
     """Show action menu for a selected todo."""
     from td_cli.config import REPO_ROOT, open_notes, open_url
@@ -1921,14 +2301,15 @@ def _select_todo(todo_id: str) -> None:
         ):
             options.append("Take from try branch")
     options.append("Mark as done")
-    options.append("Move to TODO" if group == "backlog" else "Move to backlog")
+    options.append("Move")
     options.append("Add subtask")
     options.append("Rename")
-    options.append("Open plan")
-    if ticket:
-        options.append("Linear")
-    if github_pr or branch:
-        options.append("GitHub")
+    # "Open" submenu groups plan/linear/github/summary links
+    summary_path = os.path.join(os.path.dirname(notes_path), "summary.md")
+    has_summary = os.path.isfile(summary_path)
+    options.append("Open")
+    if session_id:
+        options.append("Regenerate summary" if has_summary else "Summarize")
     options.extend(["Link", "Back"])
 
     choice = action_menu("What next?", *options)
@@ -1947,26 +2328,37 @@ def _select_todo(todo_id: str) -> None:
         take_worktree(todo_id)
     elif choice == "Mark as done":
         _archive_todo(todo_id)
-    elif choice == "Move to TODO":
-        _bump_group(todo_id, "todo")
-    elif choice == "Move to backlog":
-        _bump_group(todo_id, "backlog")
+    elif choice == "Move":
+        move(todo_id=todo_id)
     elif choice == "Add subtask":
         split(parent_id=todo_id)
     elif choice == "Rename":
         rename(todo_id=todo_id)
-    elif choice == "Open plan":
-        open_notes(notes_path)
-    elif choice == "Linear":
-        url = linear_ticket_url(ticket)
-        if url:
-            stderr.print(f"[dim]Opening {url}[/]")
-            open_url(url)
-    elif choice == "GitHub":
-        url = github_pr if github_pr else github_branch_url(branch)
-        if url:
-            stderr.print(f"[dim]Opening {url}[/]")
-            open_url(url)
+    elif choice == "Open":
+        open_opts: list[str] = ["Plan"]
+        if has_summary:
+            open_opts.append("Summary")
+        if ticket:
+            open_opts.append("Linear")
+        if github_pr or branch:
+            open_opts.append("GitHub")
+        sub = action_menu("Open…", *open_opts)
+        if sub == "Plan":
+            open_notes(notes_path)
+        elif sub == "Summary":
+            open_notes(summary_path)
+        elif sub == "Linear":
+            url = linear_ticket_url(ticket)
+            if url:
+                stderr.print(f"[dim]Opening {url}[/]")
+                open_url(url)
+        elif sub == "GitHub":
+            url = github_pr if github_pr else github_branch_url(branch)
+            if url:
+                stderr.print(f"[dim]Opening {url}[/]")
+                open_url(url)
+    elif choice in ("Summarize", "Regenerate summary"):
+        _summarize_todo(todo_id)
     elif choice == "Link":
         link(arg1=todo_id)
 
@@ -2044,4 +2436,7 @@ def _picker() -> None:
         if selected_id == "__sep__":
             continue
 
-        _select_todo(selected_id)
+        try:
+            _select_todo(selected_id)
+        except typer.Abort:
+            pass  # Esc in sub-prompt → return to picker
