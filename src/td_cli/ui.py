@@ -41,7 +41,7 @@ def prompt_input(placeholder: str, default: str = "") -> str:
     check_fzf()
     args = [
         FZF, "--print-query", "--layout=reverse", "--height=~3",
-        "--no-info", "--no-scrollbar", "--border",
+        "--no-info", "--no-scrollbar", "--border", "--no-mouse",
         "--prompt", f"{placeholder}: ",
         "--header", "esc to cancel",
     ]
@@ -78,7 +78,7 @@ def action_menu(header: str, *options: str) -> str | None:
     lines = "\n".join(f"{i}  {opt}" for i, opt in enumerate(options, 1))
     result = subprocess.run(
         [FZF, "--header", header, "--layout=reverse", "--height=~20",
-         "--no-info", "--no-scrollbar", "--border", "--ansi", "--no-multi",
+         "--no-info", "--no-scrollbar", "--border", "--ansi", "--no-multi", "--no-mouse",
          "--prompt=› ", "--bind", "one:accept"],
         input=lines, capture_output=True, text=True,
     )
@@ -99,7 +99,7 @@ def pick_todo(header: str = "Select a todo", prompt: str = "❯ ") -> str | None
     result = subprocess.run(
         [FZF, "--header", header, "--layout=reverse", "--height=80%",
          "--with-nth=4..", "--no-hscroll", "--delimiter=\t", "--header-first",
-         "--border", "--ansi", "--no-multi", f"--prompt={prompt}"],
+         "--border", "--ansi", "--no-multi", "--no-mouse", f"--prompt={prompt}"],
         input=lines, capture_output=True, text=True,
     )
     if result.returncode != 0 or not result.stdout.strip():
