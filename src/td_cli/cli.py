@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -2195,24 +2196,35 @@ def _summarize_todo(todo_id: str) -> None:
         "Be concise. Skip tool call details — focus on what happened and why."
     )
 
-    with stderr.status(f"[dim]Summarizing session for [bold]{title}[/]…[/]"):
-        try:
-            result = subprocess.run(
-                ["claude", "-p", "--model", "haiku", "--bare", prompt],
-                input=transcript,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-        except subprocess.TimeoutExpired:
-            stderr.print("[yellow]Summarization timed out.[/]")
-            return
-
-    if result.returncode != 0:
-        stderr.print(f"[red]claude -p failed:[/] {result.stderr.strip()}")
+    stderr.print(f"[dim]Summarizing session for [bold]{title}[/]…[/]\n")
+    try:
+        proc = subprocess.Popen(
+            ["claude", "-p", "--model", "haiku", "--bare", prompt],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        chunks: list[str] = []
+        assert proc.stdin is not None
+        proc.stdin.write(transcript)
+        proc.stdin.close()
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            sys.stderr.write(line)
+            chunks.append(line)
+        proc.wait(timeout=300)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        stderr.print("[yellow]Summarization timed out.[/]")
         return
 
-    summary = result.stdout.strip()
+    if proc.returncode != 0:
+        assert proc.stderr is not None
+        stderr.print(f"[red]claude -p failed:[/] {proc.stderr.read().strip()}")
+        return
+
+    summary = "".join(chunks).strip()
     if not summary:
         stderr.print("[yellow]claude -p returned empty output.[/]")
         return

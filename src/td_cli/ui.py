@@ -177,19 +177,21 @@ def format_fzf_lines(show_done: bool = True, group_filter: str = "", collapse_ch
         return result
 
     # Build ordered list
-    roots_active = sorted(
-        [t for t in all_todos if not t.get("parent_id") and t.get("status") == "active"],
-        key=sort_key, reverse=True,
-    )
-    roots_done = sorted(
-        [t for t in all_todos if not t.get("parent_id") and t.get("status") == "done"],
-        key=sort_key, reverse=True,
-    )
+    if show_done:
+        # Unified date sort when done items are visible
+        roots = sorted(
+            [t for t in all_todos if not t.get("parent_id")],
+            key=sort_key, reverse=True,
+        )
+    else:
+        # Active-only (no done roots to interleave)
+        roots = sorted(
+            [t for t in all_todos if not t.get("parent_id") and t.get("status") == "active"],
+            key=sort_key, reverse=True,
+        )
 
     ordered: list[dict] = []
-    for r in roots_active:
-        ordered.extend(emit_tree(r))
-    for r in roots_done:
+    for r in roots:
         ordered.extend(emit_tree(r))
 
     # Date boundaries
