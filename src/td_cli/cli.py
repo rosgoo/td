@@ -500,8 +500,8 @@ def _archive_todo(todo_id: str) -> None:
                 shutil.rmtree(dest)
             notes_dir.rename(dest)
             # Update notes_path for this todo and all descendants
-            old_prefix = str(notes_dir)
-            new_prefix = str(dest)
+            old_prefix = str(notes_dir) + "/"
+            new_prefix = str(dest) + "/"
             for t in todos:
                 if t["id"] in all_ids and t.get("notes_path", "").startswith(
                     old_prefix
@@ -1018,10 +1018,15 @@ def rename(
             old_dir.rename(new_dir)
 
     todos = read_todos()
+    old_prefix = str(Path(old_notes_path).parent) + "/" if old_notes_path else ""
+    new_prefix = str(containing_dir / new_folder) + "/"
     for t in todos:
         if t["id"] == todo_id:
             t["title"] = new_title
             t["notes_path"] = new_notes_path
+        elif old_prefix and t.get("notes_path", "").startswith(old_prefix):
+            # Update descendant subtask paths
+            t["notes_path"] = t["notes_path"].replace(old_prefix, new_prefix, 1)
     write_todos(todos)
 
     stderr.print(f"[green]✓[/] Renamed: [dim]{old_title}[/] › [bold]{new_title}[/]")
@@ -1514,6 +1519,7 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
 
     # Rename folders whose todo title has changed
     renamed = 0
+    seen_dirs: set[str] = set()
     todos = read_todos()
     for t in todos:
         notes_path = t.get("notes_path", "")
@@ -1522,6 +1528,11 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
         old_dir = Path(notes_path).parent
         if not old_dir.is_dir():
             continue
+        # Skip if another todo already claimed this directory (duplicate notes_path)
+        dir_key = str(old_dir)
+        if dir_key in seen_dirs:
+            continue
+        seen_dirs.add(dir_key)
         containing_dir = old_dir.parent
         expected_folder = notes_folder_name(t["id"], t["title"], containing_dir)
         expected_dir = containing_dir / expected_folder
@@ -1533,8 +1544,9 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
             )
         else:
             old_dir.rename(expected_dir)
-            old_prefix = str(old_dir)
-            new_prefix = str(expected_dir)
+            seen_dirs.add(str(expected_dir))
+            old_prefix = str(old_dir) + "/"
+            new_prefix = str(expected_dir) + "/"
             # Update paths for this todo and all descendants
             for s in todos:
                 if s.get("notes_path", "").startswith(old_prefix):
@@ -1571,8 +1583,8 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
                 )
             else:
                 notes_dir.rename(dest)
-                old_prefix = str(notes_dir)
-                new_prefix = str(dest)
+                old_prefix = str(notes_dir) + "/"
+                new_prefix = str(dest) + "/"
                 # Update paths for this todo and all descendants
                 all_ids = {t["id"]}
                 for s in todos:
@@ -1595,8 +1607,8 @@ def sync(dry_run: bool = typer.Option(False, "-n", "--dry-run")) -> None:
                 )
             else:
                 notes_dir.rename(dest)
-                old_prefix = str(notes_dir)
-                new_prefix = str(dest)
+                old_prefix = str(notes_dir) + "/"
+                new_prefix = str(dest) + "/"
                 all_ids = {t["id"]}
                 for s in todos:
                     if s.get("parent_id") in all_ids:
