@@ -458,10 +458,6 @@ def _archive_todo(todo_id: str) -> None:
     if not todo:
         return
 
-    # Generate summary before archiving (while transcript is still accessible)
-    if todo.get("session_id"):
-        _summarize_todo(todo_id)
-
     title = todo["title"]
     wt_path = todo.get("worktree_path", "")
     branch = todo.get("branch", "")
