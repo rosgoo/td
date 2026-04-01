@@ -32,6 +32,10 @@ def _arg(val):  # noqa: ANN001
     return val if isinstance(val, (str, bool, int, float)) else None
 
 
+def _debug() -> bool:
+    return os.environ.get("TODO_DEBUG") == "1"
+
+
 def _version_str() -> str:
     from importlib.metadata import PackageNotFoundError, version
 
@@ -59,12 +63,17 @@ def main(
     no_color: bool = typer.Option(
         False, "--no-color", envvar="NO_COLOR", help="Disable colored output."
     ),
+    debug: bool = typer.Option(
+        False, "--debug", envvar="TODO_DEBUG", help="Show verbose output from Claude calls and errors."
+    ),
 ) -> None:
     """td — Minimal task manager for Claude Code."""
     if quiet:
         os.environ["TODO_QUIET"] = "1"
     if no_color:
         os.environ["NO_COLOR"] = "1"
+    if debug:
+        os.environ["TODO_DEBUG"] = "1"
     from td_cli.data import ensure_setup
 
     ensure_setup()
@@ -981,10 +990,10 @@ def rename(
         if session_id:
             from td_cli.ui import action_menu as _rename_menu
 
-            choice = _rename_menu("Rename source?", "Suggest from session", "Manual")
+            choice = _rename_menu("Rename source?", "Manual", "Smart rename")
             if not choice:
                 raise typer.Abort()
-            if choice == "Suggest from session":
+            if choice == "Smart rename":
                 suggested = _suggest_title(todo)
                 if suggested:
                     default_title = suggested
@@ -2139,21 +2148,28 @@ def _suggest_title(todo: dict) -> str | None:
     prompt = (
         "Read this Claude Code session transcript and suggest a short title "
         "(under 60 chars) that describes what was worked on. "
-        "Output ONLY the title, nothing else. No quotes, no explanation."
+        "Output ONLY the title, nothing else. No quotes, no explanation.\n\n"
+        "--- BEGIN TRANSCRIPT ---\n"
     )
+    full_input = prompt + transcript + "\n--- END TRANSCRIPT ---"
 
     with stderr.status("[dim]Generating title suggestion…[/]"):
         try:
             result = subprocess.run(
-                ["claude", "-p", "--model", "haiku", "--bare", prompt],
-                input=transcript,
+                ["claude", "-p", "--model", "haiku", "--bare"],
+                input=full_input,
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
         except subprocess.TimeoutExpired:
-            pass
+            if _debug():
+                stderr.print("[yellow]Title suggestion timed out.[/]")
         else:
+            if _debug():
+                stderr.print(f"[dim]claude stdout:[/] {result.stdout.strip()}")
+                if result.stderr.strip():
+                    stderr.print(f"[dim]claude stderr:[/] {result.stderr.strip()}")
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip()[:60]
 
@@ -2188,43 +2204,64 @@ def _summarize_todo(todo_id: str) -> None:
 
     prompt = (
         "You are summarizing a Claude Code development session. "
-        "Read the transcript and produce a concise summary with these sections:\n\n"
+        "Read the transcript below and produce a concise summary with these sections:\n\n"
         "## Summary\nOne paragraph overview of what was accomplished.\n\n"
         "## Key Decisions\nBulleted list of important decisions made during the session.\n\n"
         "## Changes Made\nBulleted list of files changed and what was done.\n\n"
         "## Open Questions\nAnything unresolved or left for follow-up.\n\n"
-        "Be concise. Skip tool call details — focus on what happened and why."
+        "Be concise. Skip tool call details — focus on what happened and why.\n\n"
+        "--- BEGIN TRANSCRIPT ---\n"
     )
+    full_input = prompt + transcript + "\n--- END TRANSCRIPT ---"
 
-    stderr.print(f"[dim]Summarizing session for [bold]{title}[/]…[/]\n")
-    try:
-        proc = subprocess.Popen(
-            ["claude", "-p", "--model", "haiku", "--bare", prompt],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        chunks: list[str] = []
-        assert proc.stdin is not None
-        proc.stdin.write(transcript)
-        proc.stdin.close()
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            sys.stderr.write(line)
-            chunks.append(line)
-        proc.wait(timeout=300)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        stderr.print("[yellow]Summarization timed out.[/]")
-        return
+    cmd = ["claude", "-p", "--model", "haiku", "--bare"]
 
-    if proc.returncode != 0:
-        assert proc.stderr is not None
-        stderr.print(f"[red]claude -p failed:[/] {proc.stderr.read().strip()}")
-        return
+    if _debug():
+        stderr.print(f"[dim]Summarizing session for [bold]{title}[/]…[/]\n")
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            chunks: list[str] = []
+            assert proc.stdin is not None
+            proc.stdin.write(full_input)
+            proc.stdin.close()
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                sys.stderr.write(line)
+                chunks.append(line)
+            proc.wait(timeout=300)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stderr.print("[yellow]Summarization timed out.[/]")
+            return
+        if proc.returncode != 0:
+            assert proc.stderr is not None
+            stderr.print(f"[red]claude -p failed:[/] {proc.stderr.read().strip()}")
+            return
+        summary = "".join(chunks).strip()
+    else:
+        with stderr.status(f"[dim]Summarizing session for [bold]{title}[/]…[/]"):
+            try:
+                result = subprocess.run(
+                    cmd,
+                    input=full_input,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+            except subprocess.TimeoutExpired:
+                stderr.print("[yellow]Summarization timed out.[/]")
+                return
+        if result.returncode != 0:
+            stderr.print("[red]Summarization failed.[/] Run with --debug for details.")
+            return
+        summary = result.stdout.strip()
 
-    summary = "".join(chunks).strip()
     if not summary:
         stderr.print("[yellow]claude -p returned empty output.[/]")
         return
@@ -2270,6 +2307,7 @@ def _select_todo(todo_id: str) -> None:
     group = todo.get("group", "todo")
 
     stderr.print(f"\n[bold]{title}[/]")
+    stderr.print(f"  [dim]·[/] ID        [dim]{todo_id}[/]")
     if ticket:
         stderr.print(f"  [magenta]·[/] Linear    {ticket}")
     if branch:
@@ -2320,7 +2358,7 @@ def _select_todo(todo_id: str) -> None:
     has_summary = os.path.isfile(summary_path)
     options.append("Open")
     if session_id:
-        options.append("Regenerate summary" if has_summary else "Summarize")
+        options.append("Re-summarize" if has_summary else "Summarize")
     options.extend(["Admin", "Back"])
 
     choice = action_menu("What next?", *options)
@@ -2364,7 +2402,7 @@ def _select_todo(todo_id: str) -> None:
             if url:
                 stderr.print(f"[dim]Opening {url}[/]")
                 open_url(url)
-    elif choice in ("Summarize", "Regenerate summary"):
+    elif choice in ("Summarize", "Re-summarize"):
         _summarize_todo(todo_id)
     elif choice == "Admin":
         admin_opts = [
