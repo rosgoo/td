@@ -1543,7 +1543,11 @@ def _build_session_lines(query: str = "") -> str:
     if not projects_dir.is_dir():
         return ""
 
-    linked = {t.get("session_id", "") for t in read_todos() if t.get("session_id")}
+    linked: dict[str, str] = {
+        t["session_id"]: t.get("title", t.get("id", "?"))
+        for t in read_todos()
+        if t.get("session_id")
+    }
     query_lower = query.lower()
 
     # Find session files sorted by mtime
@@ -1561,7 +1565,7 @@ def _build_session_lines(query: str = "") -> str:
     lines: list[str] = []
     for fpath in files:
         sid = fpath.stem
-        if sid.startswith("agent-") or sid in linked:
+        if sid.startswith("agent-"):
             continue
 
         mtime = fpath.stat().st_mtime
@@ -1613,7 +1617,8 @@ def _build_session_lines(query: str = "") -> str:
                 age = datetime.fromtimestamp(mtime).strftime("%b %d")
 
         proj = Path(cwd).name if cwd else "unknown"
-        line = f"{sid}\t{cwd}\t{branch}\t{age:<10}  {proj[:16]:<16}  {branch[:30]:<30}  {display_msg}"
+        icon = "\033[34m◉\033[0m " if sid in linked else "  "
+        line = f"{sid}\t{cwd}\t{branch}\t{icon}{age:<10}  {proj[:16]:<16}  {branch[:30]:<30}  {display_msg}"
         lines.append(line)
 
         if len(lines) >= 50:
@@ -1910,15 +1915,13 @@ def _select_todo(todo_id: str) -> None:
         ):
             options.append("Take from try branch")
     options.append("Mark as done")
-    options.append("Move to TODO" if group == "backlog" else "Move to backlog")
     options.append("Add subtask")
-    options.append("Rename")
     options.append("Open plan")
     if ticket:
         options.append("Linear")
     if github_pr or branch:
         options.append("GitHub")
-    options.extend(["Link", "Back"])
+    options.extend(["Admin", "Back"])
 
     choice = action_menu("What next?", *options)
     if not choice:
@@ -1936,14 +1939,8 @@ def _select_todo(todo_id: str) -> None:
         take_worktree(todo_id)
     elif choice == "Mark as done":
         _archive_todo(todo_id)
-    elif choice == "Move to TODO":
-        _bump_group(todo_id, "todo")
-    elif choice == "Move to backlog":
-        _bump_group(todo_id, "backlog")
     elif choice == "Add subtask":
         split(parent_id=todo_id)
-    elif choice == "Rename":
-        rename(todo_id=todo_id)
     elif choice == "Open plan":
         open_notes(notes_path)
     elif choice == "Linear":
@@ -1956,8 +1953,25 @@ def _select_todo(todo_id: str) -> None:
         if url:
             stderr.print(f"[dim]Opening {url}[/]")
             open_url(url)
-    elif choice == "Link":
-        link(arg1=todo_id)
+    elif choice == "Admin":
+        admin_opts = [
+            "Move to TODO" if group == "backlog" else "Move to backlog",
+            "Delete",
+            "Rename",
+            "Link",
+            "Back",
+        ]
+        admin_choice = action_menu("Admin", *admin_opts)
+        if admin_choice == "Move to TODO":
+            _bump_group(todo_id, "todo")
+        elif admin_choice == "Move to backlog":
+            _bump_group(todo_id, "backlog")
+        elif admin_choice == "Delete":
+            delete(todo_id=todo_id)
+        elif admin_choice == "Rename":
+            rename(todo_id=todo_id)
+        elif admin_choice == "Link":
+            link(arg1=todo_id)
 
 
 def _picker() -> None:
