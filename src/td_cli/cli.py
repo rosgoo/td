@@ -1782,7 +1782,11 @@ def _build_session_lines(query: str = "") -> str:
     if not projects_dir.is_dir():
         return ""
 
-    linked = {t.get("session_id", "") for t in read_todos() if t.get("session_id")}
+    linked: dict[str, str] = {
+        t["session_id"]: t.get("title", t.get("id", "?"))
+        for t in read_todos()
+        if t.get("session_id")
+    }
     query_lower = query.lower()
 
     # Find session files sorted by mtime
@@ -1799,7 +1803,7 @@ def _build_session_lines(query: str = "") -> str:
     lines: list[str] = []
     for fpath in files:
         sid = fpath.stem
-        if sid.startswith("agent-") or sid in linked:
+        if sid.startswith("agent-"):
             continue
 
         mtime = fpath.stat().st_mtime
@@ -1851,7 +1855,8 @@ def _build_session_lines(query: str = "") -> str:
                 age = datetime.fromtimestamp(mtime).strftime("%b %d")
 
         proj = Path(cwd).name if cwd else "unknown"
-        line = f"{sid}\t{cwd}\t{branch}\t{age:<10}  {proj[:16]:<16}  {branch[:30]:<30}  {display_msg}"
+        icon = "\033[34m◉\033[0m " if sid in linked else "  "
+        line = f"{sid}\t{cwd}\t{branch}\t{icon}{age:<10}  {proj[:16]:<16}  {branch[:30]:<30}  {display_msg}"
         lines.append(line)
 
         if len(lines) >= 50:
