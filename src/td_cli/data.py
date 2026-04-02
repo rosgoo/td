@@ -3,7 +3,7 @@
 import json
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 
 from td_cli.config import DATA_DIR, DONE_DIR, NOTES_DIR, TODOS_FILE, console
@@ -11,44 +11,140 @@ from td_cli.config import DATA_DIR, DONE_DIR, NOTES_DIR, TODOS_FILE, console
 # --- Random names -----------------------------------------------------------
 
 _NYC_NAMES = [
-    "gowanus", "fort greene", "red hook", "dumbo", "tribeca", "nolita", "soho",
-    "chinatown", "bed-stuy", "bushwick", "williamsburg", "greenpoint", "astoria",
-    "flushing", "jackson heights", "long island city", "rockaway beach",
-    "coney island", "brighton beach", "bay ridge", "sunset park", "park slope",
-    "crown heights", "flatbush", "cobble hill", "boerum hill", "carroll gardens",
-    "clinton hill", "vinegar hill", "east village", "west village",
-    "lower east side", "gramercy", "kips bay", "murray hill", "hells kitchen",
-    "harlem", "washington heights", "inwood", "chelsea", "flatiron", "noho",
-    "two bridges", "alphabet city", "el barrio", "marble hill",
-    "spuyten duyvil", "sunnyside", "woodside", "corona", "forest hills",
-    "jamaica", "st george", "canal & broadway", "broadway & 42nd", "5th & 23rd",
-    "delancey & essex", "atlantic & flatbush", "bedford & grand",
-    "houston & bowery", "bleecker & macdougal", "st marks place", "astor place",
-    "union square", "times square", "herald square", "madison square",
-    "washington square", "tompkins square", "grand army plaza",
-    "columbus circle", "brooklyn bridge", "manhattan bridge",
-    "williamsburg bridge", "verrazzano", "george washington bridge",
-    "statue of liberty", "ellis island", "governors island",
-    "roosevelt island", "rikers island", "central park", "prospect park",
-    "highline", "bryant park", "battery park", "riverside park", "fort tryon",
-    "pelham bay", "the cloisters", "lincoln center", "carnegie hall",
-    "radio city", "grand central", "penn station", "fulton street",
-    "wall street", "rockefeller center", "empire state", "chrysler building",
-    "flatiron building", "woolworth building", "one world trade", "met museum",
-    "guggenheim", "moma", "apollo theater", "yankee stadium", "citi field",
-    "barclays center", "madison square garden", "oculus", "domino park",
-    "jane's carousel", "little island", "vessel", "bethesda fountain",
-    "strawberry fields", "bow bridge", "belvedere castle", "the ramble",
-    "sheep meadow", "the reservoir",
+    "gowanus",
+    "fort greene",
+    "red hook",
+    "dumbo",
+    "tribeca",
+    "nolita",
+    "soho",
+    "chinatown",
+    "bed-stuy",
+    "bushwick",
+    "williamsburg",
+    "greenpoint",
+    "astoria",
+    "flushing",
+    "jackson heights",
+    "long island city",
+    "rockaway beach",
+    "coney island",
+    "brighton beach",
+    "bay ridge",
+    "sunset park",
+    "park slope",
+    "crown heights",
+    "flatbush",
+    "cobble hill",
+    "boerum hill",
+    "carroll gardens",
+    "clinton hill",
+    "vinegar hill",
+    "east village",
+    "west village",
+    "lower east side",
+    "gramercy",
+    "kips bay",
+    "murray hill",
+    "hells kitchen",
+    "harlem",
+    "washington heights",
+    "inwood",
+    "chelsea",
+    "flatiron",
+    "noho",
+    "two bridges",
+    "alphabet city",
+    "el barrio",
+    "marble hill",
+    "spuyten duyvil",
+    "sunnyside",
+    "woodside",
+    "corona",
+    "forest hills",
+    "jamaica",
+    "st george",
+    "canal & broadway",
+    "broadway & 42nd",
+    "5th & 23rd",
+    "delancey & essex",
+    "atlantic & flatbush",
+    "bedford & grand",
+    "houston & bowery",
+    "bleecker & macdougal",
+    "st marks place",
+    "astor place",
+    "union square",
+    "times square",
+    "herald square",
+    "madison square",
+    "washington square",
+    "tompkins square",
+    "grand army plaza",
+    "columbus circle",
+    "brooklyn bridge",
+    "manhattan bridge",
+    "williamsburg bridge",
+    "verrazzano",
+    "george washington bridge",
+    "statue of liberty",
+    "ellis island",
+    "governors island",
+    "roosevelt island",
+    "rikers island",
+    "central park",
+    "prospect park",
+    "highline",
+    "bryant park",
+    "battery park",
+    "riverside park",
+    "fort tryon",
+    "pelham bay",
+    "the cloisters",
+    "lincoln center",
+    "carnegie hall",
+    "radio city",
+    "grand central",
+    "penn station",
+    "fulton street",
+    "wall street",
+    "rockefeller center",
+    "empire state",
+    "chrysler building",
+    "flatiron building",
+    "woolworth building",
+    "one world trade",
+    "met museum",
+    "guggenheim",
+    "moma",
+    "apollo theater",
+    "yankee stadium",
+    "citi field",
+    "barclays center",
+    "madison square garden",
+    "oculus",
+    "domino park",
+    "jane's carousel",
+    "little island",
+    "vessel",
+    "bethesda fountain",
+    "strawberry fields",
+    "bow bridge",
+    "belvedere castle",
+    "the ramble",
+    "sheep meadow",
+    "the reservoir",
 ]
 
 
 def random_name() -> str:
     import random
+
     return random.choice(_NYC_NAMES)
 
 
 # --- Setup ------------------------------------------------------------------
+
 
 def ensure_setup() -> None:
     """Create data directory and todos.json if they don't exist."""
@@ -70,6 +166,7 @@ def ensure_setup() -> None:
 
 
 # --- ID helpers -------------------------------------------------------------
+
 
 def slugify(text: str) -> str:
     """Lowercase, strip non-alphanumeric, collapse dashes, truncate to 40."""
@@ -94,9 +191,20 @@ def generate_id(title: str) -> str:
 
 
 def notes_folder_name(todo_id: str, title: str, base_dir: Path | None = None) -> str:
-    """Return a folder name for the todo's notes. Handles collisions."""
+    """Return a folder name for the todo's notes. Handles collisions.
+
+    If the todo already has a notes_path, reuse that folder name
+    instead of generating a new one.
+    """
     if base_dir is None:
         base_dir = NOTES_DIR
+    # Check if the todo already has an assigned notes folder
+    todos = read_todos()
+    existing = next((t for t in todos if t["id"] == todo_id), None)
+    if existing and existing.get("notes_path"):
+        existing_dir = Path(existing["notes_path"]).parent
+        if existing_dir.parent == base_dir:
+            return existing_dir.name
     # Strip filesystem-unsafe characters
     name = re.sub(r'[/\\:*?"<>|]', "", title)
     name = name.strip(" .")
@@ -108,7 +216,6 @@ def notes_folder_name(todo_id: str, title: str, base_dir: Path | None = None) ->
         # Check if this folder belongs to the same todo
         plan = base_dir / candidate / "plan.md"
         if plan.exists():
-            todos = read_todos()
             owner = next((t for t in todos if t.get("notes_path") == str(plan)), None)
             if owner and owner["id"] == todo_id:
                 break
@@ -118,6 +225,7 @@ def notes_folder_name(todo_id: str, title: str, base_dir: Path | None = None) ->
 
 
 # --- Read/write -------------------------------------------------------------
+
 
 def read_todos() -> list[dict]:
     """Read the todos JSON array."""
@@ -133,6 +241,7 @@ def write_todos(todos: list[dict]) -> None:
 
 
 # --- Queries ----------------------------------------------------------------
+
 
 def get_todo(todo_id: str) -> dict | None:
     """Return a single todo by ID, or None."""
@@ -155,10 +264,12 @@ def done_todos() -> list[dict]:
 
 # --- ID resolution ----------------------------------------------------------
 
+
 def resolve_id(input_id: str) -> str:
     """Resolve exact/prefix/suffix match. Returns full ID or raises SystemExit."""
     if not input_id:
         import typer
+
         raise typer.BadParameter("No ID provided.")
 
     todos = read_todos()
@@ -179,10 +290,12 @@ def resolve_id(input_id: str) -> str:
         return suffix_matches[0]["id"]
 
     import typer
+
     raise typer.BadParameter(f"No unique todo found for '{input_id}'")
 
 
 # --- Notes ------------------------------------------------------------------
+
 
 def ensure_notes(todo_id: str, title: str) -> str:
     """Create plan.md for a todo if it doesn't exist. Returns the file path."""
@@ -218,6 +331,7 @@ def ensure_notes(todo_id: str, title: str) -> str:
 
 # --- Timestamps -------------------------------------------------------------
 
+
 def now_iso() -> str:
     """Return current UTC time in ISO format."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
