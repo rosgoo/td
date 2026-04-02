@@ -30,6 +30,8 @@ Minimal task and session manager for agentic coding.
 - **`/td` slash command** — manage todos from inside any Claude Code session using the non-interactive cli commands
 - **Linear & GitHub linking** — attach tickets, PRs, and branches to todos; open them from the picker
 - **Session summaries** — auto-generates a `summary.md` when marking a todo as done, or on-demand from the picker. Uses `claude -p` with Haiku for fast, concise summaries of what was accomplished
+- **Weekly summaries** — `td week` generates an HTML summary of tasks and PRs organized by day, with session-based filtering to exclude cleanup-only moves
+- **Calendar view** — `td calendar` shows a month grid with per-day stats and clickable links into each day's weekly summary
 - **Pre-compact hook** — automatically snapshots conversation context into `plan.md` before Claude compacts, so notes are never lost
 - **Local first** — all storage is done in markdown and json reducing dependencies
 
@@ -205,6 +207,8 @@ All commands accept an optional `[id]` (or ID prefix) to skip the interactive pi
 | `td try [id]` | Apply worktree diff to a try branch on main repo |
 | `td take [id]` | Cherry-pick try branch changes back into the worktree |
 | `td sync` | Two-way sync: create/remove todos and dirs (`-n` for dry run) |
+| `td week` | Generate HTML weekly summary (`--weeks N` for multiple weeks) |
+| `td calendar` | Open calendar view linking to weekly summaries (`--months N`) |
 
 ### Admin
 
@@ -407,6 +411,10 @@ Environment variables override settings: `TODO_DATA_DIR`, `TODO_REPO`, `TODO_EDI
     <title>/
       plan.md             # Notes for each todo (+ session notes appended by hooks)
       summary.md          # Session summary (generated on done or on-demand)
+  done/                   # Completed todos (moved here by td done)
+  summary/
+    weekly-summary-YYYY-MM-DD.html  # Weekly summaries (named by Monday's date)
+    calendar.html                   # Calendar view
 ```
 
 Each todo record contains:
