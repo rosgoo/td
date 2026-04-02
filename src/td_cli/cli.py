@@ -64,7 +64,10 @@ def main(
         False, "--no-color", envvar="NO_COLOR", help="Disable colored output."
     ),
     debug: bool = typer.Option(
-        False, "--debug", envvar="TODO_DEBUG", help="Show verbose output from Claude calls and errors."
+        False,
+        "--debug",
+        envvar="TODO_DEBUG",
+        help="Show verbose output from Claude calls and errors.",
     ),
 ) -> None:
     """td — Minimal task manager for Claude Code."""
@@ -1881,6 +1884,36 @@ def _build_session_lines(query: str = "") -> str:
             break
 
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# td week [--weeks N]
+# ---------------------------------------------------------------------------
+
+
+@app.command(rich_help_panel=_NON_INTERACTIVE)
+def week(
+    weeks: int = typer.Option(1, "--weeks", "-w", help="Number of weeks to look back."),
+) -> None:
+    """Generate an HTML weekly summary of tasks and PRs."""
+    from td_cli.weekly import run
+
+    run(weeks=weeks)
+
+
+# ---------------------------------------------------------------------------
+# td calendar [--months N]
+# ---------------------------------------------------------------------------
+
+
+@app.command(rich_help_panel=_NON_INTERACTIVE)
+def calendar(
+    months: int = typer.Option(3, "--months", "-m", help="Number of months to show."),
+) -> None:
+    """Open a calendar view linking to weekly summaries."""
+    from td_cli.calendar_view import run
+
+    run(months=months)
 
 
 # ---------------------------------------------------------------------------
