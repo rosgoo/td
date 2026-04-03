@@ -503,13 +503,16 @@ def generate_html(data: dict) -> str:
                 if summary:
                     summary_html = f"<p>{_e(summary)}</p>"
 
-                # Expandable full summary + plan button
+                # Expandable content: click card → summary (or plan if no summary)
+                # "Plan" button only shown when both summary AND plan exist
                 summary_full = task.get("_summary_full", "")
                 plan_full = task.get("_plan_full", "")
                 tid = _e(task["id"])
                 expand_body = ""
                 plan_btn = ""
-                if summary_full or plan_full:
+                has_expand = bool(summary_full or plan_full)
+
+                if has_expand:
                     parts = []
                     if summary_full:
                         b64 = base64.b64encode(summary_full.encode()).decode()
@@ -518,22 +521,25 @@ def generate_html(data: dict) -> str:
                         )
                     if plan_full:
                         b64 = base64.b64encode(plan_full.encode()).decode()
+                        # If there's a summary, plan starts hidden (toggled by button)
+                        # If there's NO summary, plan shows directly on card click
+                        plan_hidden = ' style="display:none"' if summary_full else ""
                         parts.append(
-                            f'<div class="md-content plan-content" data-md="{b64}" id="plan-{tid}" style="display:none"></div>'
+                            f'<div class="md-content plan-content" data-md="{b64}" id="plan-{tid}"{plan_hidden}></div>'
                         )
                     expand_body = (
                         f'<div class="expand-body" id="body-{tid}" style="display:none">'
                         f'{"".join(parts)}'
                         f"</div>"
                     )
-                if plan_full:
-                    plan_btn = f'<button class="plan-btn" onclick="event.stopPropagation();togglePlan(\'{tid}\')">Plan</button>'
+                    # Only show Plan button when both exist (as a secondary toggle)
+                    if summary_full and plan_full:
+                        plan_btn = f'<button class="plan-btn" onclick="event.stopPropagation();togglePlan(\'{tid}\')">Plan</button>'
 
-                clickable = ' onclick="toggleCard(this)"' if (summary_full or plan_full) else ""
-                expandable_cls = " expandable" if (summary_full or plan_full) else ""
-
+                card_cls = " expandable" if has_expand else ""
+                card_click = ' onclick="toggleCard(this)"' if has_expand else ""
                 cards.append(
-                    f'<div class="card{expandable_cls}"{clickable}>'
+                    f'<div class="card{card_cls}"{card_click}>'
                     f"<h3>{title} {badge} {plan_btn}</h3>"
                     f"{meta_html}"
                     f"{summary_html}"
