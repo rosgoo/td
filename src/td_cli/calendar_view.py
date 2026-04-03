@@ -230,11 +230,7 @@ def generate_calendar_html(months: int = 3) -> str:
                 if ds["merged"]:
                     dots.append(f'<span class="dot-prs">{ds["merged"]}</span>')
                 dot_html = f'<div class="day-dots">{" ".join(dots)}</div>'
-                # Duration gradient: light yellow → darker yellow
                 dur = ds.get("duration_min", 0)
-                # Scale: 0min=0 opacity, 120min+=max opacity
-                intensity = min(1.0, dur / 120) * 0.4
-                style = f' style="background:rgba(210,153,34,{intensity:.2f})"' if dur > 0 else ""
                 # Hover preview: done tasks + merged PRs as table
                 rows = []
                 for t in ds.get("task_titles", [])[:5]:
@@ -248,10 +244,12 @@ def generate_calendar_html(months: int = 3) -> str:
                 if dur > 0:
                     dur_footer = f'<div class="tt-duration">{_fmt_dur(dur)}</div>'
                 hover_html = f'<div class="day-hover"><table>{"".join(rows)}</table>{dur_footer}</div>' if rows or dur else ""
+                intensity = min(1.0, dur / 120) * 0.5 if dur > 0 else 0
+                glow = f' style="background:radial-gradient(circle,rgba(210,153,34,{intensity:.2f}) 0%,transparent 70%)"' if intensity else ""
                 week_days.append(
-                    f'<td class="{" ".join(classes)}"{style}>'
+                    f'<td class="{" ".join(classes)}">'
                     f'<a href="{_e(day_link)}" class="day-link">'
-                    f'<span class="day-num">{day_num}</span>'
+                    f'<span class="day-num"{glow}>{day_num}</span>'
                     f"{dot_html}"
                     f"{hover_html}"
                     f"</a></td>"
@@ -353,7 +351,11 @@ def generate_calendar_html(months: int = 3) -> str:
     height: 52px; text-align: center; vertical-align: middle;
     border: 1px solid transparent; border-radius: 6px; position: relative;
   }}
-  .day-cell .day-num {{ font-size: 0.82rem; color: var(--text-muted); }}
+  .day-cell .day-num {{
+    font-size: 0.82rem; color: var(--text-muted);
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 2rem; height: 2rem; border-radius: 50%;
+  }}
   .day-cell.empty .day-num {{ visibility: hidden; }}
   .day-cell.today {{
     background: var(--accent-subtle); border-color: var(--accent);
