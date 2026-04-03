@@ -810,7 +810,7 @@ def generate_html(data: dict) -> str:
   .stat {{ background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1.25rem; min-width: 130px; }}
   .stat .number {{ font-size: 1.75rem; font-weight: 700; line-height: 1.2; }}
   .stat .label {{ color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }}
-  .day {{ margin-bottom: 2.5rem; }}
+  .day {{ margin-bottom: 2.5rem; scroll-margin-top: 3.5rem; }}
   .day-header {{
     font-size: 1.15rem; font-weight: 600; margin-bottom: 1rem; padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--border); display: flex; align-items: baseline; gap: 0.75rem;
