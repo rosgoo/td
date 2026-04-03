@@ -376,13 +376,16 @@ def generate_calendar_html(months: int = 3) -> str:
   .day-hover {{
     display: none; position: absolute; left: 0; top: 100%; margin-top: 0.25rem;
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-    padding: 0.5rem; min-width: 280px; max-width: 350px; z-index: 100;
+    padding: 0.6rem 0.5rem; min-width: 280px; max-width: 350px; z-index: 100;
     box-shadow: 0 8px 24px rgba(0,0,0,0.4); text-align: left;
     white-space: normal;
   }}
   .day-link:hover .day-hover {{ display: block; }}
-  .day-hover table {{ width: 100%; border-spacing: 0; }}
-  .day-hover td {{ padding: 0.2rem 0.35rem; vertical-align: top; font-size: 0.78rem; color: var(--text-muted); }}
+  .day-hover table {{ width: 100%; border-spacing: 0; table-layout: auto; }}
+  .day-hover td {{
+    padding: 0.25rem 0.35rem; vertical-align: top; font-size: 0.78rem;
+    color: var(--text-muted); border: none; background: none;
+  }}
   .day-hover td:first-child {{ width: 1%; white-space: nowrap; padding-right: 0.5rem; }}
   .tt-badge {{
     display: inline-block; font-size: 0.6rem; font-weight: 600; padding: 0.15em 0.4em;
