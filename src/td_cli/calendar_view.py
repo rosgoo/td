@@ -144,9 +144,9 @@ def _render_week_pill(wd: dict | None) -> str:
         f'<td class="week-summary-cell">'
         f'<a href="{_e(summary_file)}" class="week-link">'
         f'<span class="week-stats">'
-        f'<span class="tt-badge done">done</span> <span class="ws-done">{wd["tasks_done"]}</span>'
-        f'<span class="tt-badge merged">merged</span> <span class="ws-pr">{wd["prs_merged"]}</span>'
-        f'{"<span class=tt-badge style=background:var(--yellow-subtle);color:var(--yellow)>time</span> " + time_html if time_html else ""}'
+        f'<span class="tt-badge done">done</span><span class="ws-done">{wd["tasks_done"]}</span> '
+        f'<span class="tt-badge merged">merged</span><span class="ws-pr">{wd["prs_merged"]}</span> '
+        f'{"<span class=tt-badge style=background:var(--yellow-subtle);color:var(--yellow)>time</span><span class=ws-time>" + _e(wd["session_time"]) + "</span>" if time_html else ""}'
         f"</span>"
         f"</a></td>"
     )
@@ -223,7 +223,7 @@ def generate_calendar_html(months: int = 3) -> str:
                 if len(ds.get("task_titles", [])) > 5:
                     hover_items += f'<div class="tt-more">+{len(ds["task_titles"]) - 5} more</div>'
                 hover_items += "".join(
-                    f'<div class="tt-pr"><span class="tt-badge merged">merged</span> #{p["number"]} {_e(p["title"][:40])}</div>'
+                    f'<div class="tt-pr"><span class="tt-badge merged">merged</span> {_e(p["title"][:45])}</div>'
                     for p in ds.get("merged_prs", [])[:3]
                 )
                 hover_html = f'<div class="day-hover">{hover_items}</div>' if hover_items else ""
@@ -326,7 +326,7 @@ def generate_calendar_html(months: int = 3) -> str:
     letter-spacing: 0.04em; padding: 0.4rem 0.3rem; text-align: center;
   }}
   th.weekend {{ color: #484f58; }}
-  th.week-col {{ width: 180px; text-align: left; padding-left: 0.75rem; }}
+  th.week-col {{ width: 260px; text-align: left; padding-left: 0.75rem; }}
 
   .day-cell {{
     height: 52px; text-align: center; vertical-align: middle;
@@ -365,8 +365,8 @@ def generate_calendar_html(months: int = 3) -> str:
     border-color: var(--accent); background: var(--surface-hover);
   }}
   .week-stats {{
-    display: flex; gap: 0.5rem; font-size: 0.75rem; font-weight: 600;
-    font-variant-numeric: tabular-nums;
+    display: flex; gap: 0.35rem; align-items: center; font-size: 0.75rem; font-weight: 600;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
   }}
   .ws-done {{ color: var(--green); }}
   .ws-pr {{ color: var(--purple); }}
@@ -393,6 +393,7 @@ def generate_calendar_html(months: int = 3) -> str:
     border-radius: 8px; text-transform: uppercase; letter-spacing: 0.03em;
   }}
   .tt-badge.done {{ background: var(--green-subtle); color: var(--green); }}
+  .tt-badge.merged {{ background: var(--purple-subtle); color: var(--purple); }}
   .tt-badge.active {{ background: var(--yellow-subtle); color: var(--yellow); }}
   .tt-pr {{
     font-size: 0.75rem; color: var(--purple); padding: 0.1rem 0;
