@@ -935,7 +935,7 @@ def generate_html(data: dict) -> str:
 
 <div class="stats-bar">
   <div class="stat"><div class="number" style="color:var(--green)">{n_done}</div><div class="label">Tasks Done</div></div>
-  <div class="stat"><div class="number" style="color:var(--yellow)">{n_active}</div><div class="label">In Progress</div></div>
+  <div class="stat"><div class="number" style="color:var(--accent)">{n_active}</div><div class="label">In Progress</div></div>
   <div class="stat"><div class="number" style="color:var(--green)">{n_merged}</div><div class="label">PRs Merged</div></div>
   <div class="stat"><div class="number" style="color:var(--accent)">{n_opened}</div><div class="label">PRs Opened</div></div>
   <div class="stat"><div class="number" style="color:var(--text-muted)">{n_reviewed}</div><div class="label">PRs Reviewed</div></div>
