@@ -64,12 +64,22 @@ def _extract_stats_from_html(path: Path) -> dict:
             "reviewed": n_reviewed,
         }
 
+    # Session time (non-numeric stat like "5h23m")
+    session_time = ""
+    m = re.search(
+        r'<div class="number"[^>]*>([^<]+)</div>\s*<div class="label">Session Time</div>',
+        text,
+    )
+    if m:
+        session_time = m.group(1).strip()
+
     return {
         "tasks_done": stats.get("tasks done", 0),
         "in_progress": stats.get("in progress", 0),
         "prs_merged": stats.get("prs merged", 0),
         "prs_opened": stats.get("prs opened", 0),
         "prs_reviewed": stats.get("prs reviewed", 0),
+        "session_time": session_time,
         "tasks": tasks,
         "merged_prs": merged_prs,
         "date_range": date_range,
@@ -200,6 +210,7 @@ def generate_calendar_html(months: int = 3) -> str:
                         f'<span class="ws-done">{wd["tasks_done"]} done</span>'
                         f'<span class="ws-active">{wd["in_progress"]} active</span>'
                         f'<span class="ws-pr">{wd["prs_merged"]} prs</span>'
+                        f'{"<span class=ws-time>" + _e(wd["session_time"]) + "</span>" if wd.get("session_time") and wd["session_time"] != "—" else ""}'
                         f"</span>"
                     )
                     # Top tasks for tooltip
@@ -390,6 +401,7 @@ def generate_calendar_html(months: int = 3) -> str:
   .ws-done {{ color: var(--green); }}
   .ws-active {{ color: var(--yellow); }}
   .ws-pr {{ color: var(--purple); }}
+  .ws-time {{ color: var(--text-muted); }}
 
   .no-summary {{ color: #30363d; font-size: 0.8rem; }}
 

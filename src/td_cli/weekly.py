@@ -928,10 +928,8 @@ def generate_html(data: dict) -> str:
 <body>
 
 <header>
-  <div style="display:flex;justify-content:space-between;align-items:baseline">
-    <h1>Weekly Summary</h1>
-    <a href="calendar.html" class="nav-link">&larr; Calendar</a>
-  </div>
+  <a href="calendar.html" class="nav-link">&larr; Calendar</a>
+  <h1>Weekly Summary</h1>
   <div class="date-range">{_e(start_display)} – {_e(end_display)} &middot; {user}</div>
 </header>
 
@@ -944,13 +942,13 @@ def generate_html(data: dict) -> str:
   <div class="stat"><div class="number" style="color:var(--yellow)">{total_dur_str}</div><div class="label">Session Time</div></div>
 </div>
 
-<div class="search-bar">
-  <input type="text" id="search" placeholder="Filter tasks and PRs..." oninput="filterContent(this.value)">
-</div>
-
 <div class="time-chart">
   <h2>Time by task</h2>
   {time_chart_html}
+</div>
+
+<div class="search-bar">
+  <input type="text" id="search" placeholder="Filter tasks and PRs..." oninput="filterContent(this.value)">
 </div>
 
 {"".join(days_html)}
