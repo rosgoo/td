@@ -138,8 +138,7 @@ def _render_week_pill(wd: dict | None) -> str:
         f'<a href="{_e(summary_file)}" class="week-link">'
         f'<span class="week-stats">'
         f'<span class="ws-done">{wd["tasks_done"]} done</span>'
-        f'<span class="ws-active">{wd["in_progress"]} active</span>'
-        f'<span class="ws-pr">{wd["prs_merged"]} prs</span>'
+        f'<span class="ws-pr">{wd["prs_merged"]} prs merged</span>'
         f'{time_html}'
         f"</span>"
         f"</a></td>"
@@ -208,8 +207,6 @@ def generate_calendar_html(months: int = 3) -> str:
                     dots.append(f'<span class="dot-tasks">{ds["tasks"]}</span>')
                 if ds["merged"]:
                     dots.append(f'<span class="dot-prs">{ds["merged"]}</span>')
-                if ds["reviewed"]:
-                    dots.append(f'<span class="dot-reviews">{ds["reviewed"]}</span>')
                 dot_html = f'<div class="day-dots">{" ".join(dots)}</div>'
                 # Hover preview
                 hover_items = "".join(
@@ -344,7 +341,6 @@ def generate_calendar_html(months: int = 3) -> str:
   }}
   .dot-tasks {{ color: var(--green); }}
   .dot-prs {{ color: var(--purple); }}
-  .dot-reviews {{ color: var(--text-muted); }}
 
   .week-summary-cell {{
     vertical-align: middle; padding: 0.25rem 0.5rem; position: relative;
@@ -362,7 +358,6 @@ def generate_calendar_html(months: int = 3) -> str:
     font-variant-numeric: tabular-nums;
   }}
   .ws-done {{ color: var(--green); }}
-  .ws-active {{ color: var(--yellow); }}
   .ws-pr {{ color: var(--purple); }}
   .ws-time {{ color: var(--yellow); }}
 
