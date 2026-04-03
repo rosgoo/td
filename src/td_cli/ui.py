@@ -267,7 +267,7 @@ def format_fzf_lines(show_done: bool = True, group_filter: str = "", collapse_ch
         if status == "done":
             visible = f"{STRIKE}{age_col}  {RST}{GREEN}✓{STRIKE} {indent}{title_col}  {dir_col}  {branch_col}{RST}"
         else:
-            wt_icon = f"{MAGENTA}⎇{RST}" if wt else " "
+            wt_icon = f" {MAGENTA}⎇{RST} " if wt else "   "
             if group == "backlog":
                 icon = f"{DIM}○{RST}{wt_icon}" if session else f" {wt_icon}"
             else:
