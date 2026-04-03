@@ -46,28 +46,36 @@ def _session_mtime(session_id: str) -> datetime | None:
     return None
 
 
-def _session_duration_minutes(session_id: str) -> float | None:
-    """Calculate session duration from first/last JSONL timestamps."""
+def _session_duration_minutes(session_id: str, idle_threshold: float = 5.0) -> float | None:
+    """Calculate active session time by summing inter-message gaps under threshold.
+
+    Only counts gaps between consecutive timestamps that are shorter than
+    idle_threshold minutes. Longer gaps = idle/away time, excluded.
+    """
     path = _find_session_file(session_id)
     if not path:
         return None
     try:
-        first_ts = last_ts = None
+        timestamps: list[datetime] = []
         with open(path) as f:
             for line in f:
                 try:
                     obj = json.loads(line)
                     ts = obj.get("timestamp")
                     if ts:
-                        if first_ts is None:
-                            first_ts = ts
-                        last_ts = ts
+                        timestamps.append(
+                            datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        )
                 except json.JSONDecodeError:
                     continue
-        if first_ts and last_ts and first_ts != last_ts:
-            t1 = datetime.fromisoformat(first_ts.replace("Z", "+00:00"))
-            t2 = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
-            return max(0, (t2 - t1).total_seconds() / 60)
+        if len(timestamps) < 2:
+            return None
+        active = 0.0
+        for i in range(1, len(timestamps)):
+            gap = (timestamps[i] - timestamps[i - 1]).total_seconds() / 60
+            if gap <= idle_threshold:
+                active += gap
+        return active if active > 0 else None
     except OSError:
         pass
     return None
