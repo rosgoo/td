@@ -35,20 +35,70 @@ def _session_mtime(session_id: str) -> datetime | None:
     return None
 
 
-def _gh_json(args: list[str]) -> list[dict]:
-    """Run a gh command that returns JSON, return parsed list."""
+def _gh_json(args: list[str], repo: str = "") -> list[dict]:
+    """Run a gh command that returns JSON, return parsed list.
+
+    If repo is given (e.g. "Maybern/maybern"), adds -R flag so the command
+    works regardless of the current working directory.
+    """
+    cmd = ["gh"] + args
+    if repo and "-R" not in args:
+        cmd = ["gh"] + args[:2] + ["-R", repo] + args[2:]
     try:
         result = subprocess.run(
-            ["gh"] + args,
-            capture_output=True,
-            text=True,
-            timeout=30,
+            cmd, capture_output=True, text=True, timeout=30,
         )
         if result.returncode == 0 and result.stdout.strip():
             return json.loads(result.stdout)
     except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
         pass
     return []
+
+
+def _detect_repos(tasks: list[dict]) -> list[str]:
+    """Detect GitHub repo slugs (owner/name) from task worktree paths."""
+    repos = set()
+    # Check worktree paths and session cwds for git remotes
+    seen_dirs: set[str] = set()
+    for task in tasks:
+        for key in ("worktree_path", "session_cwd"):
+            d = task.get(key, "")
+            if not d or d in seen_dirs:
+                continue
+            seen_dirs.add(d)
+            # Walk up to find a git root
+            p = Path(d)
+            while p != p.parent:
+                if (p / ".git").exists() or (p / ".git").is_file():
+                    break
+                p = p.parent
+            else:
+                continue
+            try:
+                url = subprocess.run(
+                    ["git", "-C", str(p), "remote", "get-url", "origin"],
+                    capture_output=True, text=True, timeout=5,
+                ).stdout.strip()
+                # Parse owner/name from git URL
+                url = url.removesuffix(".git")
+                if "github.com" in url:
+                    slug = url.split("github.com")[-1].lstrip("/:")
+                    if "/" in slug:
+                        repos.add(slug)
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                pass
+    # Fallback: try current directory
+    if not repos:
+        try:
+            result = subprocess.run(
+                ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                repos.add(result.stdout.strip())
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+    return sorted(repos)
 
 
 def _git_user() -> str:
@@ -190,62 +240,58 @@ def collect_data_for_week(monday: datetime) -> dict:
 
         week_tasks.append(task)
 
-    # --- PRs authored (merged) ---
-    authored_merged = _gh_json(
-        [
-            "pr",
-            "list",
-            "--state",
-            "merged",
-            "--author",
-            "@me",
-            "--search",
-            f"merged:>={start_str}",
-            "--json",
-            "number,title,mergedAt,url,additions,deletions,headRefName",
-            "--limit",
-            "50",
-        ]
-    )
+    # --- Detect repos from task data ---
+    repos = _detect_repos(week_tasks + all_todos)
+
+    # --- PRs authored (merged) — query each repo ---
+    authored_merged: list[dict] = []
+    for repo in repos:
+        authored_merged.extend(
+            _gh_json(
+                [
+                    "pr", "list", "--state", "merged", "--author", "@me",
+                    "--search", f"merged:>={start_str}",
+                    "--json", "number,title,mergedAt,url,additions,deletions,headRefName",
+                    "--limit", "50",
+                ],
+                repo=repo,
+            )
+        )
 
     # --- PRs authored (open) ---
-    authored_open = _gh_json(
-        [
-            "pr",
-            "list",
-            "--state",
-            "open",
-            "--author",
-            "@me",
-            "--json",
-            "number,title,createdAt,url,additions,deletions,headRefName,isDraft",
-            "--limit",
-            "20",
-        ]
-    )
+    authored_open: list[dict] = []
+    for repo in repos:
+        authored_open.extend(
+            _gh_json(
+                [
+                    "pr", "list", "--state", "open", "--author", "@me",
+                    "--json", "number,title,createdAt,url,additions,deletions,headRefName,isDraft",
+                    "--limit", "20",
+                ],
+                repo=repo,
+            )
+        )
     # Filter to ones created in range
     authored_open = [
-        pr
-        for pr in authored_open
+        pr for pr in authored_open
         if _utc_to_local(pr["createdAt"]).strftime("%Y-%m-%d") >= start_str
     ]
 
     # --- PRs reviewed ---
     my_login = _gh_login()
-    reviewed = _gh_json(
-        [
-            "pr",
-            "list",
-            "--state",
-            "merged",
-            "--search",
-            f"reviewed-by:@me merged:>={start_str}",
-            "--json",
-            "number,title,mergedAt,url,author,additions,deletions",
-            "--limit",
-            "50",
-        ]
-    )
+    reviewed: list[dict] = []
+    for repo in repos:
+        reviewed.extend(
+            _gh_json(
+                [
+                    "pr", "list", "--state", "merged",
+                    "--search", f"reviewed-by:@me merged:>={start_str}",
+                    "--json", "number,title,mergedAt,url,author,additions,deletions",
+                    "--limit", "50",
+                ],
+                repo=repo,
+            )
+        )
     # Remove own PRs from reviewed list
     if my_login:
         reviewed = [
