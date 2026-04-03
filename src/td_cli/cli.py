@@ -2432,6 +2432,8 @@ def _select_todo(todo_id: str) -> None:
             open_opts.append("Linear")
         if github_pr or branch:
             open_opts.append("GitHub")
+        if wt_path:
+            open_opts.append("Worktree")
         sub = action_menu("Open…", *open_opts)
         if sub == "Plan":
             open_notes(notes_path)
@@ -2447,6 +2449,10 @@ def _select_todo(todo_id: str) -> None:
             if url:
                 stderr.print(f"[dim]Opening {url}[/]")
                 open_url(url)
+        elif sub == "Worktree":
+            stderr.print(f"[dim]cd {wt_path}[/]")
+            os.chdir(wt_path)
+            os.execl(os.environ.get("SHELL", "/bin/zsh"), "-l")
     elif choice in ("Summarize", "Re-summarize"):
         _summarize_todo(todo_id)
     elif choice == "Admin":
