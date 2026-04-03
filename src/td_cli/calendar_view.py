@@ -146,7 +146,7 @@ def _render_week_pill(wd: dict | None) -> str:
         f'<span class="week-stats">'
         f'<span class="tt-badge done">done</span> <span class="ws-done">{wd["tasks_done"]}</span>'
         f'<span class="tt-badge merged">merged</span> <span class="ws-pr">{wd["prs_merged"]}</span>'
-        f'{time_html}'
+        f'{"<span class=tt-badge style=background:var(--yellow-subtle);color:var(--yellow)>time</span> " + time_html if time_html else ""}'
         f"</span>"
         f"</a></td>"
     )
@@ -223,7 +223,7 @@ def generate_calendar_html(months: int = 3) -> str:
                 if len(ds.get("task_titles", [])) > 5:
                     hover_items += f'<div class="tt-more">+{len(ds["task_titles"]) - 5} more</div>'
                 hover_items += "".join(
-                    f'<div class="tt-pr">#{p["number"]} {_e(p["title"][:40])}</div>'
+                    f'<div class="tt-pr"><span class="tt-badge merged">merged</span> #{p["number"]} {_e(p["title"][:40])}</div>'
                     for p in ds.get("merged_prs", [])[:3]
                 )
                 hover_html = f'<div class="day-hover">{hover_items}</div>' if hover_items else ""
