@@ -771,11 +771,14 @@ def generate_html(data: dict) -> str:
         if not has_content:
             content = '<div class="card" style="border-color: var(--border); opacity: 0.6;"><p style="text-align: center; color: var(--text-muted); padding: 0.5rem 0;">No recorded activity</p></div>'
 
+        day_dur = sum(t.get("_duration_min") or 0 for t in day["tasks"])
+        day_dur_str = _format_duration(day_dur) if day_dur else ""
         days_html.append(
-            f'<div class="day" id="day-{day["date"]}">\n'
+            f'<div class="day" id="day-{day["date"]}" data-duration="{day_dur:.0f}">\n'
             f'<div class="day-header">'
             f'<span class="weekday">{_e(day["weekday"])}</span>'
             f'<span class="date">{_e(day["display"])}</span>'
+            f'{f"<span class=day-duration>{day_dur_str}</span>" if day_dur_str else ""}'
             f"</div>\n"
             f"{content}\n"
             f"</div>"
@@ -818,6 +821,7 @@ def generate_html(data: dict) -> str:
   }}
   .day-header .weekday {{ color: var(--text); }}
   .day-header .date {{ color: var(--text-muted); font-weight: 400; font-size: 0.9rem; }}
+  .day-duration {{ color: var(--yellow); font-size: 0.8rem; font-weight: 400; margin-left: auto; }}
   .badge {{
     display: inline-block; font-size: 0.65rem; font-weight: 600; padding: 0.15em 0.5em;
     border-radius: 10px; text-transform: uppercase; letter-spacing: 0.03em; vertical-align: middle;

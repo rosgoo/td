@@ -47,10 +47,10 @@ def _extract_stats_from_html(path: Path) -> dict:
     # Per-day stats: find day sections by start positions
     day_stats: dict[str, dict] = {}
     day_starts = [
-        (m.start(), m.group(1))
-        for m in re.finditer(r'<div class="day" id="day-(\d{4}-\d{2}-\d{2})">', text)
+        (m.start(), m.group(1), m.group(2))
+        for m in re.finditer(r'<div class="day" id="day-(\d{4}-\d{2}-\d{2})" data-duration="(\d+)">', text)
     ]
-    for idx, (pos, date_str) in enumerate(day_starts):
+    for idx, (pos, date_str, dur_str) in enumerate(day_starts):
         end = day_starts[idx + 1][0] if idx + 1 < len(day_starts) else len(text)
         section = text[pos:end]
         n_done = len(re.findall(r'class="badge done">', section))
@@ -74,6 +74,7 @@ def _extract_stats_from_html(path: Path) -> dict:
             "reviewed": n_reviewed,
             "task_titles": task_titles,
             "merged_prs": merged_prs,
+            "duration_min": int(dur_str),
         }
 
     # Session time (non-numeric stat like "5h23m")
@@ -130,6 +131,14 @@ def _week_start(dt: datetime) -> datetime:
 
 def _e(text: str) -> str:
     return escape(text)
+
+
+def _fmt_dur(minutes: int) -> str:
+    if minutes < 60:
+        return f"{minutes}m"
+    h = minutes // 60
+    m = minutes % 60
+    return f"{h}h{m}m" if m else f"{h}h"
 
 
 def _render_week_pill(wd: dict | None) -> str:
@@ -221,6 +230,11 @@ def generate_calendar_html(months: int = 3) -> str:
                 if ds["merged"]:
                     dots.append(f'<span class="dot-prs">{ds["merged"]}</span>')
                 dot_html = f'<div class="day-dots">{" ".join(dots)}</div>'
+                # Duration gradient: darker background for longer sessions
+                dur = ds.get("duration_min", 0)
+                # Scale: 0min=0 opacity, 120min+=max opacity
+                intensity = min(1.0, dur / 120) * 0.35
+                style = f' style="background:rgba(88,166,255,{intensity:.2f})"' if dur > 0 else ""
                 # Hover preview: done tasks + merged PRs as table
                 rows = []
                 for t in ds.get("task_titles", [])[:5]:
@@ -229,9 +243,13 @@ def generate_calendar_html(months: int = 3) -> str:
                     rows.append(f'<tr><td></td><td class="tt-more">+{len(ds["task_titles"]) - 5} more</td></tr>')
                 for p in ds.get("merged_prs", [])[:3]:
                     rows.append(f'<tr><td><span class="tt-badge merged">merged</span></td><td>{_e(p["title"][:45])}</td></tr>')
-                hover_html = f'<div class="day-hover"><table>{"".join(rows)}</table></div>' if rows else ""
+                # Duration footer in hover
+                dur_footer = ""
+                if dur > 0:
+                    dur_footer = f'<div class="tt-duration">{_fmt_dur(dur)}</div>'
+                hover_html = f'<div class="day-hover"><table>{"".join(rows)}</table>{dur_footer}</div>' if rows or dur else ""
                 week_days.append(
-                    f'<td class="{" ".join(classes)}">'
+                    f'<td class="{" ".join(classes)}"{style}>'
                     f'<a href="{_e(day_link)}" class="day-link">'
                     f'<span class="day-num">{day_num}</span>'
                     f"{dot_html}"
@@ -403,6 +421,10 @@ def generate_calendar_html(months: int = 3) -> str:
   .tt-badge.merged {{ background: var(--purple-subtle); color: var(--purple); }}
   .tt-badge.active {{ background: var(--yellow-subtle); color: var(--yellow); }}
   .tt-more {{ font-size: 0.72rem; color: #484f58; padding-top: 0.2rem; }}
+  .tt-duration {{
+    margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px solid var(--border);
+    font-size: 0.75rem; color: var(--yellow); font-weight: 600;
+  }}
 
   footer {{ margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; text-align: center; }}
 </style>
