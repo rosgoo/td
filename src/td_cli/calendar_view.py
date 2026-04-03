@@ -44,21 +44,18 @@ def _extract_stats_from_html(path: Path) -> dict:
     if m:
         date_range = m.group(1).split("·")[0].strip()
 
-    # Per-day stats: split HTML by day sections (id="day-YYYY-MM-DD")
+    # Per-day stats: find day sections by start positions
     day_stats: dict[str, dict] = {}
-    day_sections = re.split(r'<div class="day" id="day-(\d{4}-\d{2}-\d{2})">', text)
-    # day_sections[0] is before first day, then alternating: date_str, section_html
-    for i in range(1, len(day_sections) - 1, 2):
-        date_str = day_sections[i]
-        section = (
-            day_sections[i + 1].split("</div>\n</div>")[0]
-            if i + 1 < len(day_sections)
-            else ""
-        )
-        n_tasks = len(re.findall(r'<div class="card">', section))
+    day_starts = [
+        (m.start(), m.group(1))
+        for m in re.finditer(r'<div class="day" id="day-(\d{4}-\d{2}-\d{2})">', text)
+    ]
+    for idx, (pos, date_str) in enumerate(day_starts):
+        end = day_starts[idx + 1][0] if idx + 1 < len(day_starts) else len(text)
+        section = text[pos:end]
+        n_tasks = len(re.findall(r'<div class="card', section))
         n_merged = len(re.findall(r'class="badge merged">', section))
         n_reviewed = len(re.findall(r'class="badge reviewed">', section))
-        # Task titles for hover preview
         task_titles = []
         for tm in re.finditer(r'<h3>([^<]+)\s*<span class="badge (\w+)">', section):
             task_titles.append({"title": tm.group(1).strip(), "status": tm.group(2)})
