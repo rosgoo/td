@@ -365,21 +365,22 @@ def generate_calendar_html(months: int = 3) -> str:
     display: flex; align-items: center; text-decoration: none; padding: 0 0.6rem;
     border-radius: 6px; border: 1px solid var(--border); background: var(--surface);
     transition: border-color 0.15s, background 0.15s; position: relative;
-    height: 52px; padding: 0.3rem 0.75rem;
+    height: 52px; padding: 0.35rem 0.75rem; justify-content: center;
   }}
   .week-link:hover {{
     border-color: var(--accent); background: var(--surface-hover);
   }}
   .week-stats {{
-    display: flex; gap: 0.75rem; align-items: center; font-size: 0.75rem; font-weight: 600;
-    font-variant-numeric: tabular-nums; white-space: nowrap;
+    display: flex; gap: 0.75rem; align-items: center; justify-content: center;
+    font-size: 0.75rem; font-weight: 600;
+    font-variant-numeric: tabular-nums; white-space: nowrap; width: 100%;
   }}
   .ws-stat {{
-    display: flex; flex-direction: column; align-items: center; gap: 0.1rem;
+    display: flex; flex-direction: column; align-items: center; gap: 0.05rem;
   }}
-  .ws-done {{ color: var(--green); font-size: 1rem; }}
-  .ws-pr {{ color: var(--purple); font-size: 1rem; }}
-  .ws-time {{ color: var(--yellow); font-size: 1rem; }}
+  .ws-done {{ color: var(--green); font-size: 0.85rem; }}
+  .ws-pr {{ color: var(--purple); font-size: 0.85rem; }}
+  .ws-time {{ color: var(--yellow); font-size: 0.85rem; }}
   .ws-time {{ color: var(--yellow); }}
 
   .no-summary {{ color: #30363d; font-size: 0.8rem; }}
