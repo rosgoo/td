@@ -58,10 +58,15 @@ def _extract_stats_from_html(path: Path) -> dict:
         n_tasks = len(re.findall(r'<div class="card">', section))
         n_merged = len(re.findall(r'class="badge merged">', section))
         n_reviewed = len(re.findall(r'class="badge reviewed">', section))
+        # Task titles for hover preview
+        task_titles = []
+        for tm in re.finditer(r'<h3>([^<]+)\s*<span class="badge (\w+)">', section):
+            task_titles.append({"title": tm.group(1).strip(), "status": tm.group(2)})
         day_stats[date_str] = {
             "tasks": n_tasks,
             "merged": n_merged,
             "reviewed": n_reviewed,
+            "task_titles": task_titles,
         }
 
     # Session time (non-numeric stat like "5h23m")
@@ -118,6 +123,27 @@ def _week_start(dt: datetime) -> datetime:
 
 def _e(text: str) -> str:
     return escape(text)
+
+
+def _render_week_pill(wd: dict | None) -> str:
+    """Render a week summary cell (no hover — hover is on day cells now)."""
+    if not wd:
+        return '<td class="week-summary-cell"><span class="no-summary">—</span></td>'
+    summary_file = f"weekly-summary-{wd['summary_date']}.html"
+    time_html = ""
+    if wd.get("session_time") and wd["session_time"] != "—":
+        time_html = f'<span class="ws-time">{_e(wd["session_time"])}</span>'
+    return (
+        f'<td class="week-summary-cell">'
+        f'<a href="{_e(summary_file)}" class="week-link">'
+        f'<span class="week-stats">'
+        f'<span class="ws-done">{wd["tasks_done"]} done</span>'
+        f'<span class="ws-active">{wd["in_progress"]} active</span>'
+        f'<span class="ws-pr">{wd["prs_merged"]} prs</span>'
+        f'{time_html}'
+        f"</span>"
+        f"</a></td>"
+    )
 
 
 def generate_calendar_html(months: int = 3) -> str:
@@ -185,11 +211,20 @@ def generate_calendar_html(months: int = 3) -> str:
                 if ds["reviewed"]:
                     dots.append(f'<span class="dot-reviews">{ds["reviewed"]}</span>')
                 dot_html = f'<div class="day-dots">{" ".join(dots)}</div>'
+                # Hover preview
+                hover_items = "".join(
+                    f'<div class="tt-task"><span class="tt-badge {t["status"]}">{t["status"]}</span> {_e(t["title"][:45])}</div>'
+                    for t in ds.get("task_titles", [])[:6]
+                )
+                if len(ds.get("task_titles", [])) > 6:
+                    hover_items += f'<div class="tt-more">+{len(ds["task_titles"]) - 6} more</div>'
+                hover_html = f'<div class="day-hover">{hover_items}</div>' if hover_items else ""
                 week_days.append(
                     f'<td class="{" ".join(classes)}">'
                     f'<a href="{_e(day_link)}" class="day-link">'
                     f'<span class="day-num">{day_num}</span>'
                     f"{dot_html}"
+                    f"{hover_html}"
                     f"</a></td>"
                 )
             else:
@@ -200,48 +235,9 @@ def generate_calendar_html(months: int = 3) -> str:
                 )
 
             if day.weekday() == 6:  # Sunday = end of week row
-                # Check if this week has a summary
                 ws_key = _week_start(day).strftime("%Y-%m-%d")
                 wd = week_data.get(ws_key)
-                if wd:
-                    summary_file = f"weekly-summary-{wd['summary_date']}.html"
-                    stats_pill = (
-                        f'<span class="week-stats">'
-                        f'<span class="ws-done">{wd["tasks_done"]} done</span>'
-                        f'<span class="ws-active">{wd["in_progress"]} active</span>'
-                        f'<span class="ws-pr">{wd["prs_merged"]} prs</span>'
-                        f'{"<span class=ws-time>" + _e(wd["session_time"]) + "</span>" if wd.get("session_time") and wd["session_time"] != "—" else ""}'
-                        f"</span>"
-                    )
-                    # Top tasks for tooltip
-                    top_tasks = wd["tasks"][:5]
-                    task_list = "".join(
-                        f'<div class="tt-task"><span class="tt-badge {t["status"]}">{t["status"]}</span> {_e(t["title"][:50])}</div>'
-                        for t in top_tasks
-                    )
-                    if len(wd["tasks"]) > 5:
-                        task_list += (
-                            f'<div class="tt-more">+{len(wd["tasks"]) - 5} more</div>'
-                        )
-
-                    top_prs = wd["merged_prs"][:3]
-                    pr_list = "".join(
-                        f'<div class="tt-pr">#{p["number"]} {_e(p["title"][:45])}</div>'
-                        for p in top_prs
-                    )
-
-                    week_summary = (
-                        f'<td class="week-summary-cell" rowspan="1">'
-                        f'<a href="{_e(summary_file)}" class="week-link">'
-                        f"{stats_pill}"
-                        f'<div class="week-hover">'
-                        f"{task_list}{pr_list}"
-                        f"</div>"
-                        f"</a></td>"
-                    )
-                else:
-                    week_summary = '<td class="week-summary-cell"><span class="no-summary">—</span></td>'
-
+                week_summary = _render_week_pill(wd)
                 weeks_html.append(f"<tr>{''.join(week_days)}{week_summary}</tr>")
                 week_days = []
 
@@ -254,40 +250,7 @@ def generate_calendar_html(months: int = 3) -> str:
                 week_days.append('<td class="day-cell empty"></td>')
             ws_key = _week_start(day - timedelta(days=1)).strftime("%Y-%m-%d")
             wd = week_data.get(ws_key)
-            if wd:
-                summary_file = f"weekly-summary-{wd['summary_date']}.html"
-                stats_pill = (
-                    f'<span class="week-stats">'
-                    f'<span class="ws-done">{wd["tasks_done"]}d</span>'
-                    f'<span class="ws-active">{wd["in_progress"]}a</span>'
-                    f'<span class="ws-pr">{wd["prs_merged"]}pr</span>'
-                    f"</span>"
-                )
-                top_tasks = wd["tasks"][:5]
-                task_list = "".join(
-                    f'<div class="tt-task"><span class="tt-badge {t["status"]}">{t["status"]}</span> {_e(t["title"][:50])}</div>'
-                    for t in top_tasks
-                )
-                if len(wd["tasks"]) > 5:
-                    task_list += (
-                        f'<div class="tt-more">+{len(wd["tasks"]) - 5} more</div>'
-                    )
-                top_prs = wd["merged_prs"][:3]
-                pr_list = "".join(
-                    f'<div class="tt-pr">#{p["number"]} {_e(p["title"][:45])}</div>'
-                    for p in top_prs
-                )
-                week_summary = (
-                    f'<td class="week-summary-cell">'
-                    f'<a href="{_e(summary_file)}" class="week-link">'
-                    f"{stats_pill}"
-                    f'<div class="week-hover">'
-                    f"{task_list}{pr_list}"
-                    f"</div>"
-                    f"</a></td>"
-                )
-            else:
-                week_summary = '<td class="week-summary-cell"><span class="no-summary">—</span></td>'
+            week_summary = _render_week_pill(wd)
             weeks_html.append(f"<tr>{''.join(week_days)}{week_summary}</tr>")
 
         months_html.append(
@@ -401,18 +364,19 @@ def generate_calendar_html(months: int = 3) -> str:
   .ws-done {{ color: var(--green); }}
   .ws-active {{ color: var(--yellow); }}
   .ws-pr {{ color: var(--purple); }}
-  .ws-time {{ color: var(--text-muted); }}
+  .ws-time {{ color: var(--yellow); }}
 
   .no-summary {{ color: #30363d; font-size: 0.8rem; }}
 
-  /* Hover tooltip */
-  .week-hover {{
-    display: none; position: absolute; left: 0; top: 100%; margin-top: 0.5rem;
+  /* Hover tooltip on day cells */
+  .day-hover {{
+    display: none; position: absolute; left: 50%; top: 100%; margin-top: 0.25rem;
+    transform: translateX(-50%);
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-    padding: 0.75rem; min-width: 300px; max-width: 400px; z-index: 100;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    padding: 0.6rem; min-width: 260px; max-width: 350px; z-index: 100;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4); text-align: left;
   }}
-  .week-link:hover .week-hover {{ display: block; }}
+  .day-link:hover .day-hover {{ display: block; }}
 
   .tt-task {{
     font-size: 0.78rem; color: var(--text-muted); padding: 0.15rem 0;
