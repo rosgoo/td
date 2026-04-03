@@ -53,7 +53,7 @@ def _extract_stats_from_html(path: Path) -> dict:
     for idx, (pos, date_str) in enumerate(day_starts):
         end = day_starts[idx + 1][0] if idx + 1 < len(day_starts) else len(text)
         section = text[pos:end]
-        n_tasks = len(re.findall(r'<div class="card', section))
+        n_done = len(re.findall(r'class="badge done">', section))
         n_merged = len(re.findall(r'class="badge merged">', section))
         n_reviewed = len(re.findall(r'class="badge reviewed">', section))
         task_titles = [
@@ -69,7 +69,7 @@ def _extract_stats_from_html(path: Path) -> dict:
             )
         ]
         day_stats[date_str] = {
-            "tasks": n_tasks,
+            "tasks": n_done,
             "merged": n_merged,
             "reviewed": n_reviewed,
             "task_titles": task_titles,
@@ -144,8 +144,8 @@ def _render_week_pill(wd: dict | None) -> str:
         f'<td class="week-summary-cell">'
         f'<a href="{_e(summary_file)}" class="week-link">'
         f'<span class="week-stats">'
-        f'<span class="ws-done">{wd["tasks_done"]} done</span>'
-        f'<span class="ws-pr">{wd["prs_merged"]} prs merged</span>'
+        f'<span class="tt-badge done">done</span> <span class="ws-done">{wd["tasks_done"]}</span>'
+        f'<span class="tt-badge merged">merged</span> <span class="ws-pr">{wd["prs_merged"]}</span>'
         f'{time_html}'
         f"</span>"
         f"</a></td>"
