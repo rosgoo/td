@@ -1,5 +1,6 @@
 """Generate an HTML weekly summary of tasks and PRs organized by day."""
 
+import base64
 import glob as _glob
 import json
 import os
@@ -162,6 +163,17 @@ def _read_summary(task: dict) -> str:
     return " ".join(content_lines)[:300]
 
 
+def _read_full_md(task: dict, filename: str) -> str:
+    """Read the full contents of a markdown file next to the task's plan."""
+    notes_path = task.get("notes_path", "")
+    if not notes_path:
+        return ""
+    target = Path(notes_path).parent / filename
+    if not target.exists():
+        return ""
+    return target.read_text()
+
+
 def _utc_to_local(iso_str: str) -> datetime:
     """Parse a GitHub UTC timestamp to local datetime."""
     # Handle both 'Z' and '+00:00' suffixes
@@ -230,6 +242,8 @@ def collect_data_for_week(monday: datetime) -> dict:
         task["_session_dt"] = session_dt
         task["_active"] = active_this_period
         task["_summary"] = _read_summary(task)
+        task["_summary_full"] = _read_full_md(task, "summary.md")
+        task["_plan_full"] = _read_full_md(task, "plan.md")
 
         # Check for missing summaries on active tasks
         notes_path = task.get("notes_path", "")
@@ -489,11 +503,37 @@ def generate_html(data: dict) -> str:
                 if summary:
                     summary_html = f"<p>{_e(summary)}</p>"
 
+                # Expandable full summary + plan
+                summary_full = task.get("_summary_full", "")
+                plan_full = task.get("_plan_full", "")
+                expand_html = ""
+                if summary_full or plan_full:
+                    tid = _e(task["id"])
+                    parts = []
+                    if summary_full:
+                        b64 = base64.b64encode(summary_full.encode()).decode()
+                        parts.append(
+                            f'<div class="md-content" data-md="{b64}" id="summary-{tid}"></div>'
+                        )
+                    if plan_full:
+                        b64 = base64.b64encode(plan_full.encode()).decode()
+                        parts.append(
+                            f'<button class="plan-btn" onclick="togglePlan(\'{tid}\')">Show plan</button>'
+                            f'<div class="md-content plan-content" data-md="{b64}" id="plan-{tid}" style="display:none"></div>'
+                        )
+                    expand_html = (
+                        f'<details class="task-details">'
+                        f'<summary class="expand-btn">Details</summary>'
+                        f'<div class="expand-body">{"".join(parts)}</div>'
+                        f"</details>"
+                    )
+
                 cards.append(
                     f'<div class="card">'
                     f"<h3>{title} {badge}</h3>"
                     f"{meta_html}"
                     f"{summary_html}"
+                    f"{expand_html}"
                     f"</div>"
                 )
             sections.append('<div class="subsection">Tasks</div>' + "\n".join(cards))
@@ -586,6 +626,51 @@ def generate_html(data: dict) -> str:
   .card .meta {{ font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.35rem; }}
   .card .meta code {{ background: var(--bg); padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.75rem; }}
   .card p {{ font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; }}
+  .task-details {{ margin-top: 0.5rem; }}
+  .expand-btn {{
+    font-size: 0.75rem; color: var(--accent); cursor: pointer;
+    list-style: none; user-select: none;
+  }}
+  .expand-btn::-webkit-details-marker {{ display: none; }}
+  .expand-btn:hover {{ text-decoration: underline; }}
+  .expand-body {{ margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }}
+  .md-content {{
+    font-size: 0.82rem; color: var(--text-muted); line-height: 1.6;
+  }}
+  .md-content h1, .md-content h2, .md-content h3 {{
+    color: var(--text); font-size: 0.88rem; margin: 0.75rem 0 0.35rem;
+  }}
+  .md-content h1 {{ font-size: 0.95rem; }}
+  .md-content code {{
+    background: var(--bg); padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.78rem;
+  }}
+  .md-content pre {{
+    background: var(--bg); padding: 0.75rem; border-radius: 6px; overflow-x: auto;
+    margin: 0.5rem 0; font-size: 0.78rem;
+  }}
+  .md-content pre code {{ background: none; padding: 0; }}
+  .md-content table {{
+    border-collapse: collapse; width: 100%; margin: 0.5rem 0; font-size: 0.78rem;
+  }}
+  .md-content th, .md-content td {{
+    border: 1px solid var(--border); padding: 0.3rem 0.5rem; text-align: left;
+  }}
+  .md-content th {{ background: var(--bg); color: var(--text); }}
+  .md-content ul, .md-content ol {{ margin: 0.3rem 0 0.3rem 1.2rem; }}
+  .md-content li {{ margin-bottom: 0.15rem; }}
+  .md-content p {{ margin: 0.35rem 0; }}
+  .md-content blockquote {{
+    border-left: 3px solid var(--border); padding-left: 0.75rem;
+    color: var(--text-muted); margin: 0.5rem 0;
+  }}
+  .plan-btn {{
+    display: inline-block; margin-top: 0.5rem; font-size: 0.75rem;
+    color: var(--purple); background: var(--purple-subtle); border: 1px solid var(--border);
+    padding: 0.25em 0.75em; border-radius: 6px; cursor: pointer;
+    transition: border-color 0.15s;
+  }}
+  .plan-btn:hover {{ border-color: var(--purple); }}
+  .plan-content {{ margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }}
   .pr-row {{
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
     padding: 0.55rem 1.1rem; margin-bottom: 0.4rem; display: flex;
@@ -623,6 +708,37 @@ def generate_html(data: dict) -> str:
 <footer>
   Generated {datetime.now().strftime("%B %-d, %Y at %-I:%M %p")}
 </footer>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+// Render markdown content on details open
+document.querySelectorAll('.task-details').forEach(d => {{
+  d.addEventListener('toggle', () => {{
+    if (d.open) {{
+      d.querySelectorAll('.md-content:not([data-rendered])').forEach(el => {{
+        const md = atob(el.dataset.md);
+        el.innerHTML = marked.parse(md);
+        el.setAttribute('data-rendered', '1');
+      }});
+    }}
+  }});
+}});
+function togglePlan(tid) {{
+  const el = document.getElementById('plan-' + tid);
+  const btn = el.previousElementSibling;
+  if (el.style.display === 'none') {{
+    el.style.display = 'block';
+    btn.textContent = 'Hide plan';
+    if (!el.getAttribute('data-rendered')) {{
+      el.innerHTML = marked.parse(atob(el.dataset.md));
+      el.setAttribute('data-rendered', '1');
+    }}
+  }} else {{
+    el.style.display = 'none';
+    btn.textContent = 'Show plan';
+  }}
+}}
+</script>
 
 </body>
 </html>"""
