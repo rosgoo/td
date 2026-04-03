@@ -267,11 +267,10 @@ def format_fzf_lines(show_done: bool = True, group_filter: str = "", collapse_ch
         if status == "done":
             visible = f"{STRIKE}{age_col}  {RST}{GREEN}✓{STRIKE} {indent}{title_col}  {dir_col}  {branch_col}{RST}"
         else:
-            wt_icon = f" {MAGENTA}⎇{RST} " if wt else "   "
             if group == "backlog":
-                icon = f"{DIM}○{RST}{wt_icon}" if session else f" {wt_icon}"
+                icon = f"{DIM}○{RST} " if session else "  "
             else:
-                icon = f"{GREEN}◉{RST}{wt_icon}" if session else f" {wt_icon}"
+                icon = f"{GREEN}◉{RST} " if session else "  "
 
             if ticket:
                 ttw = tw - len(ticket) - 1
@@ -279,7 +278,8 @@ def format_fzf_lines(show_done: bool = True, group_filter: str = "", collapse_ch
             else:
                 colored_title = title_col
 
-            visible = f"{DIM}{age_col}{RST}  {icon}{indent}{colored_title}  {DIM}{dir_col}{RST}  {CYAN}{branch_col}{RST}"
+            wt_suffix = f"  {MAGENTA}⎇{RST}" if wt else ""
+            visible = f"{DIM}{age_col}{RST}  {icon}{indent}{colored_title}  {DIM}{dir_col}{RST}  {CYAN}{branch_col}{RST}{wt_suffix}"
 
         lines.append(f"{tid}\t{wt}\t{branch}\t{visible}")
 
