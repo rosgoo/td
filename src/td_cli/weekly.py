@@ -503,12 +503,13 @@ def generate_html(data: dict) -> str:
                 if summary:
                     summary_html = f"<p>{_e(summary)}</p>"
 
-                # Expandable full summary + plan
+                # Expandable full summary + plan button
                 summary_full = task.get("_summary_full", "")
                 plan_full = task.get("_plan_full", "")
-                expand_html = ""
+                tid = _e(task["id"])
+                expand_body = ""
+                plan_btn = ""
                 if summary_full or plan_full:
-                    tid = _e(task["id"])
                     parts = []
                     if summary_full:
                         b64 = base64.b64encode(summary_full.encode()).decode()
@@ -518,22 +519,25 @@ def generate_html(data: dict) -> str:
                     if plan_full:
                         b64 = base64.b64encode(plan_full.encode()).decode()
                         parts.append(
-                            f'<button class="plan-btn" onclick="togglePlan(\'{tid}\')">Show plan</button>'
                             f'<div class="md-content plan-content" data-md="{b64}" id="plan-{tid}" style="display:none"></div>'
                         )
-                    expand_html = (
-                        f'<details class="task-details">'
-                        f'<summary class="expand-btn">Details</summary>'
-                        f'<div class="expand-body">{"".join(parts)}</div>'
-                        f"</details>"
+                    expand_body = (
+                        f'<div class="expand-body" id="body-{tid}" style="display:none">'
+                        f'{"".join(parts)}'
+                        f"</div>"
                     )
+                if plan_full:
+                    plan_btn = f'<button class="plan-btn" onclick="event.stopPropagation();togglePlan(\'{tid}\')">Plan</button>'
+
+                clickable = ' onclick="toggleCard(this)"' if (summary_full or plan_full) else ""
+                expandable_cls = " expandable" if (summary_full or plan_full) else ""
 
                 cards.append(
-                    f'<div class="card">'
-                    f"<h3>{title} {badge}</h3>"
+                    f'<div class="card{expandable_cls}"{clickable}>'
+                    f"<h3>{title} {badge} {plan_btn}</h3>"
                     f"{meta_html}"
                     f"{summary_html}"
-                    f"{expand_html}"
+                    f"{expand_body}"
                     f"</div>"
                 )
             sections.append('<div class="subsection">Tasks</div>' + "\n".join(cards))
@@ -626,13 +630,9 @@ def generate_html(data: dict) -> str:
   .card .meta {{ font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.35rem; }}
   .card .meta code {{ background: var(--bg); padding: 0.1em 0.4em; border-radius: 4px; font-size: 0.75rem; }}
   .card p {{ font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; }}
-  .task-details {{ margin-top: 0.5rem; }}
-  .expand-btn {{
-    font-size: 0.75rem; color: var(--accent); cursor: pointer;
-    list-style: none; user-select: none;
-  }}
-  .expand-btn::-webkit-details-marker {{ display: none; }}
-  .expand-btn:hover {{ text-decoration: underline; }}
+  .card.expandable {{ cursor: pointer; }}
+  .card.expandable:hover {{ border-color: var(--accent); }}
+  .card.expanded {{ border-color: var(--accent); }}
   .expand-body {{ margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }}
   .md-content {{
     font-size: 0.82rem; color: var(--text-muted); line-height: 1.6;
@@ -711,21 +711,24 @@ def generate_html(data: dict) -> str:
 
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
-// Render markdown content on details open
-document.querySelectorAll('.task-details').forEach(d => {{
-  d.addEventListener('toggle', () => {{
-    if (d.open) {{
-      d.querySelectorAll('.md-content:not([data-rendered])').forEach(el => {{
-        const md = atob(el.dataset.md);
-        el.innerHTML = marked.parse(md);
-        el.setAttribute('data-rendered', '1');
-      }});
-    }}
-  }});
-}});
+function toggleCard(card) {{
+  const body = card.querySelector('.expand-body');
+  if (!body) return;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  card.classList.toggle('expanded', !open);
+  if (!open) {{
+    body.querySelectorAll('.md-content:not([data-rendered])').forEach(el => {{
+      el.innerHTML = marked.parse(atob(el.dataset.md));
+      el.setAttribute('data-rendered', '1');
+    }});
+  }}
+}}
 function togglePlan(tid) {{
   const el = document.getElementById('plan-' + tid);
-  const btn = el.previousElementSibling;
+  if (!el) return;
+  const card = el.closest('.card');
+  const btn = card.querySelector('.plan-btn');
   if (el.style.display === 'none') {{
     el.style.display = 'block';
     btn.textContent = 'Hide plan';
@@ -735,7 +738,7 @@ function togglePlan(tid) {{
     }}
   }} else {{
     el.style.display = 'none';
-    btn.textContent = 'Show plan';
+    btn.textContent = 'Plan';
   }}
 }}
 </script>
