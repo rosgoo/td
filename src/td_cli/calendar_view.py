@@ -56,14 +56,24 @@ def _extract_stats_from_html(path: Path) -> dict:
         n_tasks = len(re.findall(r'<div class="card', section))
         n_merged = len(re.findall(r'class="badge merged">', section))
         n_reviewed = len(re.findall(r'class="badge reviewed">', section))
-        task_titles = []
-        for tm in re.finditer(r'<h3>([^<]+)\s*<span class="badge (\w+)">', section):
-            task_titles.append({"title": tm.group(1).strip(), "status": tm.group(2)})
+        task_titles = [
+            {"title": tm.group(1).strip(), "status": tm.group(2)}
+            for tm in re.finditer(r'<h3>([^<]+)\s*<span class="badge (\w+)">', section)
+            if tm.group(2) != "active"
+        ]
+        merged_prs = [
+            {"number": int(pm.group(1)), "title": pm.group(2).strip()}
+            for pm in re.finditer(
+                r'<a href="[^"]*">#(\d+)</a>\s*<span class="pr-title">([^<]+)</span>\s*<span class="badge merged">',
+                section,
+            )
+        ]
         day_stats[date_str] = {
             "tasks": n_tasks,
             "merged": n_merged,
             "reviewed": n_reviewed,
             "task_titles": task_titles,
+            "merged_prs": merged_prs,
         }
 
     # Session time (non-numeric stat like "5h23m")
@@ -205,13 +215,17 @@ def generate_calendar_html(months: int = 3) -> str:
                 if ds["merged"]:
                     dots.append(f'<span class="dot-prs">{ds["merged"]}</span>')
                 dot_html = f'<div class="day-dots">{" ".join(dots)}</div>'
-                # Hover preview
+                # Hover preview: done tasks + merged PRs
                 hover_items = "".join(
-                    f'<div class="tt-task"><span class="tt-badge {t["status"]}">{t["status"]}</span> {_e(t["title"][:45])}</div>'
-                    for t in ds.get("task_titles", [])[:6]
+                    f'<div class="tt-task"><span class="tt-badge done">done</span> {_e(t["title"][:45])}</div>'
+                    for t in ds.get("task_titles", [])[:5]
                 )
-                if len(ds.get("task_titles", [])) > 6:
-                    hover_items += f'<div class="tt-more">+{len(ds["task_titles"]) - 6} more</div>'
+                if len(ds.get("task_titles", [])) > 5:
+                    hover_items += f'<div class="tt-more">+{len(ds["task_titles"]) - 5} more</div>'
+                hover_items += "".join(
+                    f'<div class="tt-pr">#{p["number"]} {_e(p["title"][:40])}</div>'
+                    for p in ds.get("merged_prs", [])[:3]
+                )
                 hover_html = f'<div class="day-hover">{hover_items}</div>' if hover_items else ""
                 week_days.append(
                     f'<td class="{" ".join(classes)}">'
