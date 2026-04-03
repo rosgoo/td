@@ -272,14 +272,20 @@ def format_fzf_lines(show_done: bool = True, group_filter: str = "", collapse_ch
             else:
                 icon = f"{GREEN}◉{RST} " if session else "  "
 
+            wt_badge = f" {MAGENTA}⎇{RST}" if wt else ""
+            wt_len = 2 if wt else 0  # " ⎇" is 2 visible chars
             if ticket:
-                ttw = tw - len(ticket) - 1
-                colored_title = f"{MAGENTA}{ticket}{RST} {title[:ttw]:<{max(ttw, 0)}}"
+                ttw = tw - len(ticket) - 1 - wt_len
+                raw_title = f"{ticket} {title[:ttw]}{wt_badge}"
+                pad = max(tw - len(ticket) - 1 - len(title[:ttw]) - wt_len, 0)
+                colored_title = f"{MAGENTA}{ticket}{RST} {title[:ttw]}{wt_badge}{' ' * pad}"
             else:
-                colored_title = title_col
+                ttw = tw - wt_len
+                truncated = title[:ttw]
+                pad = max(tw - len(truncated) - wt_len, 0)
+                colored_title = f"{truncated}{wt_badge}{' ' * pad}"
 
-            wt_suffix = f"  {MAGENTA}⎇{RST}" if wt else ""
-            visible = f"{DIM}{age_col}{RST}  {icon}{indent}{colored_title}  {DIM}{dir_col}{RST}  {CYAN}{branch_col}{RST}{wt_suffix}"
+            visible = f"{DIM}{age_col}{RST}  {icon}{indent}{colored_title}  {DIM}{dir_col}{RST}  {CYAN}{branch_col}{RST}"
 
         lines.append(f"{tid}\t{wt}\t{branch}\t{visible}")
 
