@@ -317,7 +317,7 @@ def generate_calendar_html(months: int = 3) -> str:
   .month {{ margin-bottom: 2.5rem; }}
   .month h2 {{ font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--text); }}
 
-  table {{ width: 100%; border-collapse: separate; border-spacing: 0 0.35rem; table-layout: fixed; }}
+  table {{ width: 100%; border-collapse: separate; border-spacing: 0.2rem 0.5rem; table-layout: fixed; }}
   th {{
     font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;
     letter-spacing: 0.04em; padding: 0.4rem 0.3rem; text-align: center;
