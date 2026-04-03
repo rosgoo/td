@@ -795,6 +795,7 @@ def generate_html(data: dict) -> str:
     --green: #3fb950; --green-subtle: #23863522;
     --yellow: #d29922; --yellow-subtle: #d2992222;
     --purple: #bc8cff; --purple-subtle: #bc8cff22;
+    --orange: #db6d28;
     --red: #f85149;
   }}
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -935,8 +936,8 @@ def generate_html(data: dict) -> str:
 
 <div class="stats-bar">
   <div class="stat"><div class="number" style="color:var(--green)">{n_done}</div><div class="label">Tasks Done</div></div>
-  <div class="stat"><div class="number" style="color:var(--accent)">{n_active}</div><div class="label">In Progress</div></div>
-  <div class="stat"><div class="number" style="color:var(--green)">{n_merged}</div><div class="label">PRs Merged</div></div>
+  <div class="stat"><div class="number" style="color:var(--orange)">{n_active}</div><div class="label">In Progress</div></div>
+  <div class="stat"><div class="number" style="color:var(--purple)">{n_merged}</div><div class="label">PRs Merged</div></div>
   <div class="stat"><div class="number" style="color:var(--accent)">{n_opened}</div><div class="label">PRs Opened</div></div>
   <div class="stat"><div class="number" style="color:var(--text-muted)">{n_reviewed}</div><div class="label">PRs Reviewed</div></div>
   <div class="stat"><div class="number" style="color:var(--yellow)">{total_dur_str}</div><div class="label">Session Time</div></div>
