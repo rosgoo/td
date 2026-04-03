@@ -503,41 +503,31 @@ def generate_html(data: dict) -> str:
                 if summary:
                     summary_html = f"<p>{_e(summary)}</p>"
 
-                # Expandable content: click card → summary (or plan if no summary)
-                # "Plan" button only shown when both summary AND plan exist
                 summary_full = task.get("_summary_full", "")
                 plan_full = task.get("_plan_full", "")
                 tid = _e(task["id"])
                 expand_body = ""
                 plan_btn = ""
-                has_expand = bool(summary_full or plan_full)
 
-                if has_expand:
-                    parts = []
-                    if summary_full:
-                        b64 = base64.b64encode(summary_full.encode()).decode()
-                        parts.append(
-                            f'<div class="md-content" data-md="{b64}" id="summary-{tid}"></div>'
-                        )
-                    if plan_full:
-                        b64 = base64.b64encode(plan_full.encode()).decode()
-                        # If there's a summary, plan starts hidden (toggled by button)
-                        # If there's NO summary, plan shows directly on card click
-                        plan_hidden = ' style="display:none"' if summary_full else ""
-                        parts.append(
-                            f'<div class="md-content plan-content" data-md="{b64}" id="plan-{tid}"{plan_hidden}></div>'
-                        )
+                # Click card → expand full summary (only if summary exists)
+                if summary_full:
+                    b64 = base64.b64encode(summary_full.encode()).decode()
                     expand_body = (
                         f'<div class="expand-body" id="body-{tid}" style="display:none">'
-                        f'{"".join(parts)}'
+                        f'<div class="md-content" data-md="{b64}" id="summary-{tid}"></div>'
                         f"</div>"
                     )
-                    # Only show Plan button when both exist (as a secondary toggle)
-                    if summary_full and plan_full:
-                        plan_btn = f'<button class="plan-btn" onclick="event.stopPropagation();togglePlan(\'{tid}\')">Plan</button>'
 
-                card_cls = " expandable" if has_expand else ""
-                card_click = ' onclick="toggleCard(this)"' if has_expand else ""
+                # Plan button → standalone toggle (if plan exists)
+                if plan_full:
+                    b64 = base64.b64encode(plan_full.encode()).decode()
+                    plan_btn = f'<button class="plan-btn" onclick="event.stopPropagation();togglePlan(\'{tid}\')">Plan</button>'
+                    expand_body += (
+                        f'<div class="md-content plan-content" data-md="{b64}" id="plan-{tid}" style="display:none"></div>'
+                    )
+
+                card_cls = " expandable" if summary_full else ""
+                card_click = ' onclick="toggleCard(this)"' if summary_full else ""
                 cards.append(
                     f'<div class="card{card_cls}"{card_click}>'
                     f"<h3>{title} {badge} {plan_btn}</h3>"
@@ -733,19 +723,7 @@ function toggleCard(card) {{
 function togglePlan(tid) {{
   const el = document.getElementById('plan-' + tid);
   if (!el) return;
-  const card = el.closest('.card');
-  const btn = card.querySelector('.plan-btn');
-  // Ensure the expand body is visible first
-  const body = card.querySelector('.expand-body');
-  if (body && body.style.display === 'none') {{
-    body.style.display = 'block';
-    card.classList.add('expanded');
-    // Also render summary if present
-    body.querySelectorAll('.md-content:not([data-rendered]):not(.plan-content)').forEach(s => {{
-      s.innerHTML = marked.parse(atob(s.dataset.md));
-      s.setAttribute('data-rendered', '1');
-    }});
-  }}
+  const btn = el.closest('.card').querySelector('.plan-btn');
   if (el.style.display === 'none') {{
     el.style.display = 'block';
     btn.textContent = 'Hide plan';
