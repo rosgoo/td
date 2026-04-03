@@ -267,10 +267,11 @@ def format_fzf_lines(show_done: bool = True, group_filter: str = "", collapse_ch
         if status == "done":
             visible = f"{STRIKE}{age_col}  {RST}{GREEN}✓{STRIKE} {indent}{title_col}  {dir_col}  {branch_col}{RST}"
         else:
+            wt_icon = "🌿" if wt else " "
             if group == "backlog":
-                icon = f"{DIM}○{RST} " if session else "  "
+                icon = f"{DIM}○{RST}{wt_icon}" if session else f" {wt_icon}"
             else:
-                icon = f"{GREEN}◉{RST} " if session else "  "
+                icon = f"{GREEN}◉{RST}{wt_icon}" if session else f" {wt_icon}"
 
             if ticket:
                 ttw = tw - len(ticket) - 1
