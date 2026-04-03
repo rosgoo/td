@@ -215,18 +215,15 @@ def generate_calendar_html(months: int = 3) -> str:
                 if ds["merged"]:
                     dots.append(f'<span class="dot-prs">{ds["merged"]}</span>')
                 dot_html = f'<div class="day-dots">{" ".join(dots)}</div>'
-                # Hover preview: done tasks + merged PRs
-                hover_items = "".join(
-                    f'<div class="tt-task"><span class="tt-badge done">done</span> {_e(t["title"][:45])}</div>'
-                    for t in ds.get("task_titles", [])[:5]
-                )
+                # Hover preview: done tasks + merged PRs as table
+                rows = []
+                for t in ds.get("task_titles", [])[:5]:
+                    rows.append(f'<tr><td><span class="tt-badge done">done</span></td><td>{_e(t["title"][:45])}</td></tr>')
                 if len(ds.get("task_titles", [])) > 5:
-                    hover_items += f'<div class="tt-more">+{len(ds["task_titles"]) - 5} more</div>'
-                hover_items += "".join(
-                    f'<div class="tt-pr"><span class="tt-badge merged">merged</span> {_e(p["title"][:45])}</div>'
-                    for p in ds.get("merged_prs", [])[:3]
-                )
-                hover_html = f'<div class="day-hover">{hover_items}</div>' if hover_items else ""
+                    rows.append(f'<tr><td></td><td class="tt-more">+{len(ds["task_titles"]) - 5} more</td></tr>')
+                for p in ds.get("merged_prs", [])[:3]:
+                    rows.append(f'<tr><td><span class="tt-badge merged">merged</span></td><td>{_e(p["title"][:45])}</td></tr>')
+                hover_html = f'<div class="day-hover"><table>{"".join(rows)}</table></div>' if rows else ""
                 week_days.append(
                     f'<td class="{" ".join(classes)}">'
                     f'<a href="{_e(day_link)}" class="day-link">'
@@ -379,28 +376,22 @@ def generate_calendar_html(months: int = 3) -> str:
   .day-hover {{
     display: none; position: absolute; left: 0; top: 100%; margin-top: 0.25rem;
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-    padding: 0.6rem; min-width: 280px; max-width: 350px; z-index: 100;
+    padding: 0.5rem; min-width: 280px; max-width: 350px; z-index: 100;
     box-shadow: 0 8px 24px rgba(0,0,0,0.4); text-align: left;
     white-space: normal;
   }}
   .day-link:hover .day-hover {{ display: block; }}
-
-  .tt-task {{
-    font-size: 0.78rem; color: var(--text-muted); padding: 0.15rem 0;
-    display: flex; align-items: flex-start; gap: 0.4rem;
-  }}
+  .day-hover table {{ width: 100%; border-spacing: 0; }}
+  .day-hover td {{ padding: 0.2rem 0.35rem; vertical-align: top; font-size: 0.78rem; color: var(--text-muted); }}
+  .day-hover td:first-child {{ width: 1%; white-space: nowrap; padding-right: 0.5rem; }}
   .tt-badge {{
-    display: inline-block; font-size: 0.6rem; font-weight: 600; padding: 0.1em 0.4em;
+    display: inline-block; font-size: 0.6rem; font-weight: 600; padding: 0.15em 0.4em;
     border-radius: 8px; text-transform: uppercase; letter-spacing: 0.03em;
-    min-width: 3.2em; text-align: center; flex-shrink: 0; margin-top: 0.1em;
+    min-width: 3.2em; text-align: center;
   }}
   .tt-badge.done {{ background: var(--green-subtle); color: var(--green); }}
   .tt-badge.merged {{ background: var(--purple-subtle); color: var(--purple); }}
   .tt-badge.active {{ background: var(--yellow-subtle); color: var(--yellow); }}
-  .tt-pr {{
-    font-size: 0.78rem; color: var(--text-muted); padding: 0.15rem 0;
-    display: flex; align-items: flex-start; gap: 0.4rem;
-  }}
   .tt-more {{ font-size: 0.72rem; color: #484f58; padding-top: 0.2rem; }}
 
   footer {{ margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; text-align: center; }}
