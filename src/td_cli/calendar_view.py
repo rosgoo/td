@@ -320,7 +320,7 @@ def generate_calendar_html(months: int = 3) -> str:
   .month {{ margin-bottom: 2.5rem; }}
   .month h2 {{ font-size: 1.1rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--text); }}
 
-  table {{ width: 100%; border-collapse: collapse; table-layout: fixed; }}
+  table {{ width: 100%; border-collapse: separate; border-spacing: 0 0.35rem; table-layout: fixed; }}
   th {{
     font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;
     letter-spacing: 0.04em; padding: 0.4rem 0.3rem; text-align: center;
@@ -377,29 +377,29 @@ def generate_calendar_html(months: int = 3) -> str:
 
   /* Hover tooltip on day cells */
   .day-hover {{
-    display: none; position: absolute; left: 50%; top: 100%; margin-top: 0.25rem;
-    transform: translateX(-50%);
+    display: none; position: absolute; left: 0; top: 100%; margin-top: 0.25rem;
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-    padding: 0.6rem; min-width: 260px; max-width: 350px; z-index: 100;
+    padding: 0.6rem; min-width: 280px; max-width: 350px; z-index: 100;
     box-shadow: 0 8px 24px rgba(0,0,0,0.4); text-align: left;
+    white-space: normal;
   }}
   .day-link:hover .day-hover {{ display: block; }}
 
   .tt-task {{
     font-size: 0.78rem; color: var(--text-muted); padding: 0.15rem 0;
-    display: flex; align-items: center; gap: 0.4rem;
+    display: flex; align-items: flex-start; gap: 0.4rem;
   }}
   .tt-badge {{
     display: inline-block; font-size: 0.6rem; font-weight: 600; padding: 0.1em 0.4em;
     border-radius: 8px; text-transform: uppercase; letter-spacing: 0.03em;
-    min-width: 3.2em; text-align: center;
+    min-width: 3.2em; text-align: center; flex-shrink: 0; margin-top: 0.1em;
   }}
   .tt-badge.done {{ background: var(--green-subtle); color: var(--green); }}
   .tt-badge.merged {{ background: var(--purple-subtle); color: var(--purple); }}
   .tt-badge.active {{ background: var(--yellow-subtle); color: var(--yellow); }}
   .tt-pr {{
     font-size: 0.78rem; color: var(--text-muted); padding: 0.15rem 0;
-    display: flex; align-items: center; gap: 0.4rem;
+    display: flex; align-items: flex-start; gap: 0.4rem;
   }}
   .tt-more {{ font-size: 0.72rem; color: #484f58; padding-top: 0.2rem; }}
 
