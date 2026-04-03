@@ -143,17 +143,15 @@ def _render_week_pill(wd: dict | None) -> str:
     time_stat = ""
     if time_html:
         time_stat = (
-            f'<span class="ws-stat">'
+            f' <span class="tt-badge" style="background:var(--yellow-subtle);color:var(--yellow)">time</span>'
             f'<span class="ws-time">{_e(wd["session_time"])}</span>'
-            f'<span class="tt-badge" style="background:var(--yellow-subtle);color:var(--yellow)">time</span>'
-            f"</span>"
         )
     return (
         f'<td class="week-summary-cell">'
         f'<a href="{_e(summary_file)}" class="week-link">'
         f'<span class="week-stats">'
-        f'<span class="ws-stat"><span class="ws-done">{wd["tasks_done"]}</span><span class="tt-badge done">done</span></span>'
-        f'<span class="ws-stat"><span class="ws-pr">{wd["prs_merged"]}</span><span class="tt-badge merged">merged</span></span>'
+        f'<span class="tt-badge done">done</span><span class="ws-done">{wd["tasks_done"]}</span> '
+        f'<span class="tt-badge merged">merged</span><span class="ws-pr">{wd["prs_merged"]}</span>'
         f'{time_stat}'
         f"</span>"
         f"</a></td>"
@@ -365,22 +363,18 @@ def generate_calendar_html(months: int = 3) -> str:
     display: flex; align-items: center; text-decoration: none; padding: 0 0.6rem;
     border-radius: 6px; border: 1px solid var(--border); background: var(--surface);
     transition: border-color 0.15s, background 0.15s; position: relative;
-    height: 52px; padding: 0.35rem 0.75rem; justify-content: center;
+    height: 52px;
   }}
   .week-link:hover {{
     border-color: var(--accent); background: var(--surface-hover);
   }}
   .week-stats {{
-    display: flex; gap: 0.75rem; align-items: center; justify-content: center;
-    font-size: 0.75rem; font-weight: 600;
-    font-variant-numeric: tabular-nums; white-space: nowrap; width: 100%;
+    display: flex; gap: 0.35rem; align-items: center; font-size: 0.75rem; font-weight: 600;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
   }}
-  .ws-stat {{
-    display: flex; flex-direction: column; align-items: center; gap: 0.05rem;
-  }}
-  .ws-done {{ color: var(--green); font-size: 0.85rem; }}
-  .ws-pr {{ color: var(--purple); font-size: 0.85rem; }}
-  .ws-time {{ color: var(--yellow); font-size: 0.85rem; }}
+  .ws-done {{ color: var(--green); }}
+  .ws-pr {{ color: var(--purple); }}
+  .ws-time {{ color: var(--yellow); }}
   .ws-time {{ color: var(--yellow); }}
 
   .no-summary {{ color: #30363d; font-size: 0.8rem; }}
