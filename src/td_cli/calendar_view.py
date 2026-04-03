@@ -230,11 +230,11 @@ def generate_calendar_html(months: int = 3) -> str:
                 if ds["merged"]:
                     dots.append(f'<span class="dot-prs">{ds["merged"]}</span>')
                 dot_html = f'<div class="day-dots">{" ".join(dots)}</div>'
-                # Duration gradient: darker background for longer sessions
+                # Duration gradient: light yellow → darker yellow
                 dur = ds.get("duration_min", 0)
                 # Scale: 0min=0 opacity, 120min+=max opacity
-                intensity = min(1.0, dur / 120) * 0.35
-                style = f' style="background:rgba(88,166,255,{intensity:.2f})"' if dur > 0 else ""
+                intensity = min(1.0, dur / 120) * 0.4
+                style = f' style="background:rgba(210,153,34,{intensity:.2f})"' if dur > 0 else ""
                 # Hover preview: done tasks + merged PRs as table
                 rows = []
                 for t in ds.get("task_titles", [])[:5]:
