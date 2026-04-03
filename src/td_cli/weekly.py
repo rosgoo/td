@@ -729,6 +729,17 @@ function togglePlan(tid) {{
   if (!el) return;
   const card = el.closest('.card');
   const btn = card.querySelector('.plan-btn');
+  // Ensure the expand body is visible first
+  const body = card.querySelector('.expand-body');
+  if (body && body.style.display === 'none') {{
+    body.style.display = 'block';
+    card.classList.add('expanded');
+    // Also render summary if present
+    body.querySelectorAll('.md-content:not([data-rendered]):not(.plan-content)').forEach(s => {{
+      s.innerHTML = marked.parse(atob(s.dataset.md));
+      s.setAttribute('data-rendered', '1');
+    }});
+  }}
   if (el.style.display === 'none') {{
     el.style.display = 'block';
     btn.textContent = 'Hide plan';
