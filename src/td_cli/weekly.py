@@ -10,7 +10,9 @@ from datetime import datetime, timedelta, timezone
 from html import escape
 from pathlib import Path
 
-from td_cli.config import DATA_DIR, DONE_DIR, NOTES_DIR, console
+import re as _re
+
+from td_cli.config import DATA_DIR, DONE_DIR, LINEAR_ORG, NOTES_DIR, console
 
 SUMMARY_DIR = DATA_DIR / "summary"
 
@@ -27,13 +29,142 @@ def _read_todos() -> list[dict]:
         return []
 
 
-def _session_mtime(session_id: str) -> datetime | None:
-    """Return the modification time of a Claude session file, or None."""
+def _find_session_file(session_id: str) -> str | None:
+    """Locate a Claude session JSONL file."""
     base = os.path.expanduser("~/.claude/projects")
     for match in _glob.glob(f"{base}/*/{session_id}.jsonl"):
         if "subagent" not in match:
-            return datetime.fromtimestamp(os.path.getmtime(match))
+            return match
     return None
+
+
+def _session_mtime(session_id: str) -> datetime | None:
+    """Return the modification time of a Claude session file, or None."""
+    path = _find_session_file(session_id)
+    if path:
+        return datetime.fromtimestamp(os.path.getmtime(path))
+    return None
+
+
+def _session_duration_minutes(session_id: str) -> float | None:
+    """Calculate session duration from first/last JSONL timestamps."""
+    path = _find_session_file(session_id)
+    if not path:
+        return None
+    try:
+        first_ts = last_ts = None
+        with open(path) as f:
+            for line in f:
+                try:
+                    obj = json.loads(line)
+                    ts = obj.get("timestamp")
+                    if ts:
+                        if first_ts is None:
+                            first_ts = ts
+                        last_ts = ts
+                except json.JSONDecodeError:
+                    continue
+        if first_ts and last_ts and first_ts != last_ts:
+            t1 = datetime.fromisoformat(first_ts.replace("Z", "+00:00"))
+            t2 = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
+            return max(0, (t2 - t1).total_seconds() / 60)
+    except OSError:
+        pass
+    return None
+
+
+def _git_diff_stats(branch: str, repos: list[str]) -> dict | None:
+    """Get +/- line counts for a branch vs master/main."""
+    if not branch:
+        return None
+    for repo_slug in repos:
+        # Try to find local repo path from worktree dirs
+        pass
+    # Try from common repo locations
+    for repo_path in _repo_paths:
+        try:
+            # Determine base branch
+            base = "master"
+            if subprocess.run(
+                ["git", "-C", repo_path, "show-ref", "--verify", "--quiet", "refs/heads/master"],
+                capture_output=True,
+            ).returncode != 0:
+                base = "main"
+            # Check branch exists
+            if subprocess.run(
+                ["git", "-C", repo_path, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+                capture_output=True,
+            ).returncode != 0:
+                continue
+            result = subprocess.run(
+                ["git", "-C", repo_path, "diff", f"{base}...{branch}", "--shortstat"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode != 0:
+                continue
+            line = result.stdout.strip()
+            if not line:
+                continue
+            adds = 0
+            dels = 0
+            m = _re.search(r"(\d+) insertion", line)
+            if m:
+                adds = int(m.group(1))
+            m = _re.search(r"(\d+) deletion", line)
+            if m:
+                dels = int(m.group(1))
+            return {"additions": adds, "deletions": dels}
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            continue
+    return None
+
+
+# Cache of discovered repo paths on disk
+_repo_paths: list[str] = []
+
+
+def _discover_repo_paths(tasks: list[dict]) -> None:
+    """Find local git repo root paths from task worktree/session paths."""
+    global _repo_paths
+    seen: set[str] = set()
+    for task in tasks:
+        for key in ("worktree_path", "session_cwd"):
+            d = task.get(key, "")
+            if not d:
+                continue
+            p = Path(d)
+            while p != p.parent:
+                if (p / ".git").exists() or (p / ".git").is_file():
+                    s = str(p)
+                    if s not in seen:
+                        seen.add(s)
+                        _repo_paths.append(s)
+                    break
+                p = p.parent
+
+
+def _extract_linear_ticket(title: str) -> str | None:
+    """Extract a Linear ticket ID like CORE-12345 from a task title."""
+    m = _re.search(r"\b([A-Z]+-\d+)\b", title)
+    return m.group(1) if m else None
+
+
+def _linear_url(ticket_id: str) -> str:
+    """Build a Linear ticket URL."""
+    if LINEAR_ORG and ticket_id:
+        return f"https://linear.app/{LINEAR_ORG}/issue/{ticket_id.lower()}"
+    return ""
+
+
+def _format_duration(minutes: float | None) -> str:
+    """Format minutes as a human-readable string."""
+    if minutes is None:
+        return ""
+    if minutes < 60:
+        return f"{int(minutes)}m"
+    h = int(minutes // 60)
+    m = int(minutes % 60)
+    return f"{h}h{m}m" if m else f"{h}h"
 
 
 def _gh_json(args: list[str], repo: str = "") -> list[dict]:
@@ -245,6 +376,17 @@ def collect_data_for_week(monday: datetime) -> dict:
         task["_summary_full"] = _read_full_md(task, "summary.md")
         task["_plan_full"] = _read_full_md(task, "plan.md")
 
+        # Session duration
+        if session_id:
+            task["_duration_min"] = _session_duration_minutes(session_id)
+        else:
+            task["_duration_min"] = None
+
+        # Linear ticket
+        ticket = _extract_linear_ticket(task.get("title", ""))
+        task["_linear_ticket"] = ticket
+        task["_linear_url"] = _linear_url(ticket) if ticket else ""
+
         # Check for missing summaries on active tasks
         notes_path = task.get("notes_path", "")
         if active_this_period and notes_path:
@@ -332,6 +474,20 @@ def collect_data_for_week(monday: datetime) -> dict:
     # Filter out cleanup-only tasks
     week_tasks = [t for t in week_tasks if t["_active"]]
 
+    # --- Git diff stats (after filtering to avoid unnecessary git calls) ---
+    _discover_repo_paths(week_tasks + all_todos)
+    for task in week_tasks:
+        task["_diff_stats"] = _git_diff_stats(task.get("branch", ""), repos)
+
+    # --- Subtask grouping ---
+    by_id = {t["id"]: t for t in week_tasks}
+    for task in week_tasks:
+        pid = task.get("parent_id", "")
+        task["_is_subtask"] = bool(pid and pid in by_id)
+        task["_children"] = [
+            t for t in week_tasks if t.get("parent_id") == task["id"]
+        ]
+
     # --- Assign to days ---
     task_by_day: dict[str, list[dict]] = defaultdict(list)
     for task in week_tasks:
@@ -388,6 +544,9 @@ def collect_data_for_week(monday: datetime) -> dict:
         "authored_open": authored_open,
         "reviewed": reviewed,
         "missing_summaries": missing_summaries,
+        "total_duration_min": sum(
+            t.get("_duration_min") or 0 for t in week_tasks
+        ),
     }
 
 
@@ -423,6 +582,80 @@ def _author_name(pr: dict) -> str:
     return name.split()[0] if name else "?"
 
 
+def _render_task_card(task: dict, data: dict, indent: int = 0) -> str:
+    """Render a single task card HTML."""
+    title = _e(task.get("title", ""))
+    badge = _task_badge(task)
+    branch = task.get("branch", "")
+    summary = task.get("_summary", "")
+    tid = _e(task["id"])
+
+    # Meta line: branch, PR, Linear ticket, diff stats, duration
+    meta_parts = []
+    if task.get("_linear_url"):
+        meta_parts.append(
+            f'<a href="{_e(task["_linear_url"])}" class="meta-link">{_e(task["_linear_ticket"])}</a>'
+        )
+    if branch:
+        meta_parts.append(f"<code>{_e(branch)}</code>")
+    for pr in data["authored_merged"] + data["authored_open"]:
+        if pr.get("_task_id") == task["id"]:
+            meta_parts.append(
+                f'PR <a href="{_e(pr["url"])}" class="meta-link">#{pr["number"]}</a>'
+            )
+            break
+    diff = task.get("_diff_stats")
+    if diff:
+        meta_parts.append(
+            f'<span class="add">+{diff["additions"]:,}</span>'
+            f' <span class="del">&minus;{diff["deletions"]:,}</span>'
+        )
+    dur = _format_duration(task.get("_duration_min"))
+    if dur:
+        meta_parts.append(f'<span class="duration">{dur}</span>')
+
+    meta_html = ""
+    if meta_parts:
+        meta_html = f'<div class="meta">{" &middot; ".join(meta_parts)}</div>'
+
+    summary_html = ""
+    if summary:
+        summary_html = f"<p>{_e(summary)}</p>"
+
+    summary_full = task.get("_summary_full", "")
+    plan_full = task.get("_plan_full", "")
+    expand_body = ""
+    plan_btn = ""
+
+    if summary_full:
+        b64 = base64.b64encode(summary_full.encode()).decode()
+        expand_body = (
+            f'<div class="expand-body" id="body-{tid}" style="display:none">'
+            f'<div class="md-content" data-md="{b64}" id="summary-{tid}"></div>'
+            f"</div>"
+        )
+
+    if plan_full:
+        b64 = base64.b64encode(plan_full.encode()).decode()
+        plan_btn = f'<button class="plan-btn" onclick="event.stopPropagation();togglePlan(\'{tid}\')">plan</button>'
+        expand_body += (
+            f'<div class="md-content plan-content" data-md="{b64}" id="plan-{tid}" style="display:none"></div>'
+        )
+
+    card_cls = " expandable" if summary_full else ""
+    card_cls += " subtask" if indent > 0 else ""
+    card_click = ' onclick="toggleCard(this)"' if summary_full else ""
+
+    return (
+        f'<div class="card{card_cls}"{card_click}>'
+        f"<h3>{title} {badge} {plan_btn}</h3>"
+        f"{meta_html}"
+        f"{summary_html}"
+        f"{expand_body}"
+        f"</div>"
+    )
+
+
 def generate_html(data: dict) -> str:
     user = _e(data["user"])
     start_display = data["start"].strftime("%B %-d")
@@ -433,6 +666,31 @@ def generate_html(data: dict) -> str:
     n_merged = len(data["authored_merged"])
     n_opened = len(data["authored_open"])
     n_reviewed = len(data["reviewed"])
+    total_dur = data.get("total_duration_min", 0)
+    total_dur_str = _format_duration(total_dur) if total_dur else "—"
+
+    # Time chart data: tasks sorted by duration
+    time_chart_tasks = sorted(
+        [t for t in data["tasks"] if (t.get("_duration_min") or 0) > 0],
+        key=lambda t: t.get("_duration_min", 0),
+        reverse=True,
+    )
+    max_dur = time_chart_tasks[0]["_duration_min"] if time_chart_tasks else 1
+    time_bars = []
+    for t in time_chart_tasks[:15]:  # top 15
+        dur = t["_duration_min"]
+        pct = min(100, (dur / max_dur) * 100)
+        label = _e(t["title"][:40])
+        dur_str = _format_duration(dur)
+        color = "var(--green)" if t.get("status") == "done" else "var(--yellow)"
+        time_bars.append(
+            f'<div class="time-row">'
+            f'<span class="time-label">{label}</span>'
+            f'<div class="time-bar-bg"><div class="time-bar" style="width:{pct:.0f}%;background:{color}"></div></div>'
+            f'<span class="time-val">{dur_str}</span>'
+            f"</div>"
+        )
+    time_chart_html = "\n".join(time_bars) if time_bars else '<div style="color:var(--text-muted);font-size:0.85rem">No session data available</div>'
 
     days_html = []
     for day in data["days"]:
@@ -473,70 +731,17 @@ def generate_html(data: dict) -> str:
                 '<div class="subsection">PRs Opened</div>' + "\n".join(rows)
             )
 
-        # Tasks
+        # Tasks (skip subtasks at top level — they render under parents)
         if day["tasks"]:
             cards = []
             for task in day["tasks"]:
-                title = _e(task.get("title", ""))
-                badge = _task_badge(task)
-                branch = task.get("branch", "")
-                summary = task.get("_summary", "")
-
-                meta_parts = []
-                if branch:
-                    meta_parts.append(f"<code>{_e(branch)}</code>")
-                # Check for linked PR
-                for pr in data["authored_merged"] + data["authored_open"]:
-                    if pr.get("_task_id") == task["id"]:
-                        meta_parts.append(
-                            f'PR <a href="{_e(pr["url"])}" style="color:var(--accent)">#{pr["number"]}</a>'
-                        )
-                        break
-
-                meta_html = ""
-                if meta_parts:
-                    meta_html = (
-                        f'<div class="meta">{" &middot; ".join(meta_parts)}</div>'
-                    )
-
-                summary_html = ""
-                if summary:
-                    summary_html = f"<p>{_e(summary)}</p>"
-
-                summary_full = task.get("_summary_full", "")
-                plan_full = task.get("_plan_full", "")
-                tid = _e(task["id"])
-                expand_body = ""
-                plan_btn = ""
-
-                # Click card → expand full summary (only if summary exists)
-                if summary_full:
-                    b64 = base64.b64encode(summary_full.encode()).decode()
-                    expand_body = (
-                        f'<div class="expand-body" id="body-{tid}" style="display:none">'
-                        f'<div class="md-content" data-md="{b64}" id="summary-{tid}"></div>'
-                        f"</div>"
-                    )
-
-                # Plan button → standalone toggle (if plan exists)
-                if plan_full:
-                    b64 = base64.b64encode(plan_full.encode()).decode()
-                    plan_btn = f'<button class="plan-btn" onclick="event.stopPropagation();togglePlan(\'{tid}\')">Plan</button>'
-                    expand_body += (
-                        f'<div class="md-content plan-content" data-md="{b64}" id="plan-{tid}" style="display:none"></div>'
-                    )
-
-                card_cls = " expandable" if summary_full else ""
-                card_click = ' onclick="toggleCard(this)"' if summary_full else ""
-                cards.append(
-                    f'<div class="card{card_cls}"{card_click}>'
-                    f"<h3>{title} {badge} {plan_btn}</h3>"
-                    f"{meta_html}"
-                    f"{summary_html}"
-                    f"{expand_body}"
-                    f"</div>"
-                )
-            sections.append('<div class="subsection">Tasks</div>' + "\n".join(cards))
+                if task.get("_is_subtask"):
+                    continue
+                cards.append(_render_task_card(task, data, indent=0))
+                for child in task.get("_children", []):
+                    cards.append(_render_task_card(child, data, indent=1))
+            if cards:
+                sections.append('<div class="subsection">Tasks</div>' + "\n".join(cards))
 
         # Reviewed PRs
         if day["reviewed"]:
@@ -665,6 +870,12 @@ def generate_html(data: dict) -> str:
   }}
   .plan-btn:hover {{ text-decoration: underline; }}
   .plan-content {{ margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }}
+  .card.subtask {{ margin-left: 1.5rem; border-left: 2px solid var(--border); }}
+  .meta-link {{ color: var(--accent); text-decoration: none; }}
+  .meta-link:hover {{ text-decoration: underline; }}
+  .add {{ color: var(--green); }}
+  .del {{ color: var(--red); }}
+  .duration {{ color: var(--yellow); }}
   .pr-row {{
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
     padding: 0.55rem 1.1rem; margin-bottom: 0.4rem; display: flex;
@@ -676,16 +887,43 @@ def generate_html(data: dict) -> str:
   .pr-row .pr-title {{ color: var(--text-muted); flex: 1; }}
   .pr-row .pr-author {{ color: var(--text-muted); font-size: 0.78rem; white-space: nowrap; }}
   .pr-row .pr-stats {{ white-space: nowrap; font-size: 0.78rem; font-variant-numeric: tabular-nums; }}
-  .pr-row .add {{ color: var(--green); }}
-  .pr-row .del {{ color: var(--red); }}
   .subsection {{ margin: 0.75rem 0 0.5rem; font-size: 0.78rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }}
+  /* Search */
+  .search-bar {{
+    margin-bottom: 1.5rem; position: sticky; top: 0; z-index: 10;
+    background: var(--bg); padding: 0.5rem 0;
+  }}
+  .search-bar input {{
+    width: 100%; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.6rem 1rem; color: var(--text); font-size: 0.9rem;
+    outline: none; transition: border-color 0.15s;
+  }}
+  .search-bar input:focus {{ border-color: var(--accent); }}
+  .search-bar input::placeholder {{ color: #484f58; }}
+  /* Time chart */
+  .time-chart {{ margin-bottom: 2rem; }}
+  .time-chart h2 {{
+    font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
+  }}
+  .time-row {{ display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; font-size: 0.8rem; }}
+  .time-label {{ width: 250px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }}
+  .time-bar-bg {{ flex: 1; height: 14px; background: var(--surface); border-radius: 3px; overflow: hidden; }}
+  .time-bar {{ height: 100%; border-radius: 3px; min-width: 2px; }}
+  .time-val {{ width: 50px; text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }}
+  /* Nav */
+  .nav-link {{ color: var(--accent); text-decoration: none; font-size: 0.85rem; }}
+  .nav-link:hover {{ text-decoration: underline; }}
   footer {{ margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 0.8rem; text-align: center; }}
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Weekly Summary</h1>
+  <div style="display:flex;justify-content:space-between;align-items:baseline">
+    <h1>Weekly Summary</h1>
+    <a href="calendar.html" class="nav-link">&larr; Calendar</a>
+  </div>
   <div class="date-range">{_e(start_display)} – {_e(end_display)} &middot; {user}</div>
 </header>
 
@@ -695,6 +933,16 @@ def generate_html(data: dict) -> str:
   <div class="stat"><div class="number" style="color:var(--green)">{n_merged}</div><div class="label">PRs Merged</div></div>
   <div class="stat"><div class="number" style="color:var(--accent)">{n_opened}</div><div class="label">PRs Opened</div></div>
   <div class="stat"><div class="number" style="color:var(--text-muted)">{n_reviewed}</div><div class="label">PRs Reviewed</div></div>
+  <div class="stat"><div class="number" style="color:var(--yellow)">{total_dur_str}</div><div class="label">Session Time</div></div>
+</div>
+
+<div class="search-bar">
+  <input type="text" id="search" placeholder="Filter tasks and PRs..." oninput="filterContent(this.value)">
+</div>
+
+<div class="time-chart">
+  <h2>Time by task</h2>
+  {time_chart_html}
 </div>
 
 {"".join(days_html)}
@@ -733,6 +981,19 @@ function togglePlan(tid) {{
     el.style.display = 'none';
     btn.textContent = 'Plan';
   }}
+}}
+function filterContent(query) {{
+  const q = query.toLowerCase();
+  document.querySelectorAll('.card, .pr-row').forEach(el => {{
+    const text = el.textContent.toLowerCase();
+    el.style.display = (!q || text.includes(q)) ? '' : 'none';
+  }});
+  // Hide empty day sections
+  document.querySelectorAll('.day').forEach(day => {{
+    const visible = day.querySelectorAll('.card:not([style*="display: none"]), .pr-row:not([style*="display: none"])');
+    const header = day.querySelector('.day-header');
+    if (header) header.style.display = (!q || visible.length) ? '' : 'none';
+  }});
 }}
 </script>
 
