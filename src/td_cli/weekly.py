@@ -660,12 +660,10 @@ def generate_html(data: dict) -> str:
     color: var(--text-muted); margin: 0.5rem 0;
   }}
   .plan-btn {{
-    display: inline-block; margin-top: 0.5rem; font-size: 0.75rem;
-    color: var(--purple); background: var(--purple-subtle); border: 1px solid var(--border);
-    padding: 0.25em 0.75em; border-radius: 6px; cursor: pointer;
-    transition: border-color 0.15s;
+    font-size: 0.75rem; color: var(--purple); background: none; border: none;
+    cursor: pointer; padding: 0; text-decoration: none;
   }}
-  .plan-btn:hover {{ border-color: var(--purple); }}
+  .plan-btn:hover {{ text-decoration: underline; }}
   .plan-content {{ margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }}
   .pr-row {{
     background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
