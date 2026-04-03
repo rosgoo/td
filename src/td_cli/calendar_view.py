@@ -355,11 +355,13 @@ def generate_calendar_html(months: int = 3) -> str:
 
   .week-summary-cell {{
     vertical-align: middle; padding: 0.25rem 0.5rem; position: relative;
+    height: 52px;
   }}
   .week-link {{
-    display: block; text-decoration: none; padding: 0.4rem 0.6rem;
+    display: flex; align-items: center; text-decoration: none; padding: 0 0.6rem;
     border-radius: 6px; border: 1px solid var(--border); background: var(--surface);
     transition: border-color 0.15s, background 0.15s; position: relative;
+    height: 100%;
   }}
   .week-link:hover {{
     border-color: var(--accent); background: var(--surface-hover);
@@ -396,7 +398,8 @@ def generate_calendar_html(months: int = 3) -> str:
   .tt-badge.merged {{ background: var(--purple-subtle); color: var(--purple); }}
   .tt-badge.active {{ background: var(--yellow-subtle); color: var(--yellow); }}
   .tt-pr {{
-    font-size: 0.75rem; color: var(--purple); padding: 0.1rem 0;
+    font-size: 0.78rem; color: var(--text-muted); padding: 0.15rem 0;
+    display: flex; align-items: center; gap: 0.4rem;
   }}
   .tt-more {{ font-size: 0.72rem; color: #484f58; padding-top: 0.2rem; }}
 
