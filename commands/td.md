@@ -22,7 +22,7 @@ Run `td help` for an overview or `td <command> --help` for full usage and flags.
 
 ## Summaries
 
-Each todo may have a `summary.md` colocated with its `plan.md`. Summaries are generated automatically when running `td done` (if the todo has a session), or on-demand from the interactive picker's "Summarize" action.
+Each todo may have a `summary.md` colocated with its `plan.md`. Summaries are generated on-demand from the interactive picker's "Summarize session" action. They are NOT generated automatically during `td done` or worktree/branch cleanup.
 
 If the user asks you to summarize the current conversation, write the summary to `summary.md` next to the todo's `plan.md`. Use `td show <id>` to find the plan path, then write `summary.md` in the same directory.
 

@@ -2403,7 +2403,7 @@ def _select_todo(todo_id: str) -> None:
     has_summary = os.path.isfile(summary_path)
     options.append("Open")
     if session_id:
-        options.append("Re-summarize" if has_summary else "Summarize")
+        options.append("Re-summarize session" if has_summary else "Summarize session")
     options.extend(["Admin", "Back"])
 
     choice = action_menu("What next?", *options)
@@ -2453,7 +2453,7 @@ def _select_todo(todo_id: str) -> None:
             stderr.print(f"[dim]cd {wt_path}[/]")
             os.chdir(wt_path)
             os.execl(os.environ.get("SHELL", "/bin/zsh"), "-l")
-    elif choice in ("Summarize", "Re-summarize"):
+    elif choice in ("Summarize session", "Re-summarize session"):
         _summarize_todo(todo_id)
     elif choice == "Admin":
         admin_opts = [
