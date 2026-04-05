@@ -525,6 +525,41 @@ def _archive_todo(todo_id: str) -> None:
         if confirm("Remove worktree and branch?", default=False):
             repo = REPO_ROOT
             if repo:
+                # Move Claude session files from worktree dir to main repo
+                # before removing the worktree, so transcripts remain accessible.
+                if wt_path:
+                    from td_cli.session import _find_session_file
+
+                    main_encoded = repo.replace("/", "-").replace(".", "-")
+                    main_session_dir = os.path.expanduser(
+                        f"~/.claude/projects/{main_encoded}"
+                    )
+                    todos = read_todos()
+                    moved_any = False
+                    for t in todos:
+                        if t["id"] not in all_ids:
+                            continue
+                        sid = t.get("session_id", "")
+                        scwd = t.get("session_cwd", "")
+                        if not sid:
+                            continue
+                        # Only move if the session lives under the worktree
+                        if scwd and not os.path.realpath(scwd).startswith(
+                            os.path.realpath(wt_path)
+                        ):
+                            continue
+                        old_file = _find_session_file(sid, scwd)
+                        if old_file:
+                            os.makedirs(main_session_dir, exist_ok=True)
+                            dest_file = f"{main_session_dir}/{sid}.jsonl"
+                            if old_file != dest_file:
+                                os.rename(old_file, dest_file)
+                                moved_any = True
+                        t["session_cwd"] = repo
+                    write_todos(todos)
+                    if moved_any:
+                        stderr.print("[dim]Moved session(s) to main repo[/]")
+
                 with stderr.status("[dim]Cleaning up…[/]"):
                     if wt_path and os.path.isdir(wt_path):
                         subprocess.run(
@@ -561,6 +596,16 @@ def _archive_todo(todo_id: str) -> None:
                             capture_output=True,
                         )
                         stderr.print(f"[dim]Deleted branch {branch}[/]")
+
+                # Clear stale worktree/branch so session resume uses main repo
+                todos = read_todos()
+                for t in todos:
+                    if t["id"] in all_ids:
+                        if wt_path:
+                            t["worktree_path"] = ""
+                        if branch:
+                            t["branch"] = ""
+                write_todos(todos)
 
 
 @app.command(rich_help_panel=_NON_INTERACTIVE)
@@ -849,6 +894,7 @@ def show(todo_id: str = typer.Argument(None)) -> None:
 
 
 def _bump_group(todo_id: str, new_group: str) -> None:
+    from td_cli.config import DONE_DIR, NOTES_DIR
     from td_cli.data import get_todo, read_todos, write_todos
 
     todos = read_todos()
@@ -861,9 +907,35 @@ def _bump_group(todo_id: str, new_group: str) -> None:
         return result
 
     all_ids = {todo_id} | set(descendants(todo_id))
+
+    # If reactivating a done todo, move notes from done/ back to todo/
+    top = next((t for t in todos if t["id"] == todo_id), None)
+    if top and top.get("status") == "done" and new_group in ("todo", "backlog"):
+        notes_path = top.get("notes_path", "")
+        if notes_path:
+            notes_dir = Path(notes_path).parent
+            if notes_dir.is_dir() and notes_dir.parent == DONE_DIR:
+                dest = NOTES_DIR / notes_dir.name
+                if dest.exists():
+                    import shutil
+
+                    shutil.rmtree(dest)
+                notes_dir.rename(dest)
+                old_prefix = str(notes_dir) + "/"
+                new_prefix = str(dest) + "/"
+                for t in todos:
+                    if t["id"] in all_ids and t.get("notes_path", "").startswith(
+                        old_prefix
+                    ):
+                        t["notes_path"] = t["notes_path"].replace(
+                            old_prefix, new_prefix, 1
+                        )
+
     for t in todos:
         if t["id"] in all_ids:
             t["group"] = new_group
+            if t.get("status") == "done":
+                t["status"] = new_group
     write_todos(todos)
 
     todo = get_todo(todo_id)
@@ -931,10 +1003,11 @@ def move(
 
     # Interactive: show menu
     current_group = t.get("group", "todo")
+    is_done = t.get("status") == "done"
     options = []
-    if current_group == "backlog":
+    if current_group == "backlog" or is_done:
         options.append("To TODO")
-    else:
+    if not is_done:
         options.append("To backlog")
     options.append("Under another todo")
 
@@ -2365,39 +2438,43 @@ def _select_todo(todo_id: str) -> None:
         stderr.print(f"  [green]◉[/] Session   [dim]{session_id}[/]")
     stderr.print()
 
+    is_done = todo.get("status") == "done"
+
     options: list[str] = []
     if session_id:
         options.append("Resume Claude session")
-    elif wt_path:
-        options.append("Start Claude session")
-    else:
-        options.append("Start Claude (current dir)")
-        options.append("Start Claude (new worktree)")
-    if wt_path and branch:
-        options.append("Try on main repo")
-        # Check if a try branch exists for "take"
-        from td_cli.data import slugify
+    if not is_done:
+        if not session_id:
+            if wt_path:
+                options.append("Start Claude session")
+            else:
+                options.append("Start Claude (current dir)")
+                options.append("Start Claude (new worktree)")
+        if wt_path and branch:
+            options.append("Try on main repo")
+            # Check if a try branch exists for "take"
+            from td_cli.data import slugify
 
-        _try_branch = f"try-{slugify(title)}"
-        if (
-            REPO_ROOT
-            and subprocess.run(
-                [
-                    "git",
-                    "-C",
-                    REPO_ROOT,
-                    "show-ref",
-                    "--verify",
-                    "--quiet",
-                    f"refs/heads/{_try_branch}",
-                ],
-                capture_output=True,
-            ).returncode
-            == 0
-        ):
-            options.append("Take from try branch")
-    options.append("Mark as done")
-    options.append("Add subtask")
+            _try_branch = f"try-{slugify(title)}"
+            if (
+                REPO_ROOT
+                and subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        REPO_ROOT,
+                        "show-ref",
+                        "--verify",
+                        "--quiet",
+                        f"refs/heads/{_try_branch}",
+                    ],
+                    capture_output=True,
+                ).returncode
+                == 0
+            ):
+                options.append("Take from try branch")
+        options.append("Mark as done")
+        options.append("Add subtask")
     # "Open" submenu groups plan/linear/github/summary links
     summary_path = os.path.join(os.path.dirname(notes_path), "summary.md")
     has_summary = os.path.isfile(summary_path)
