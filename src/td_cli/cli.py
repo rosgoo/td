@@ -629,19 +629,12 @@ def done(todo_id: str = typer.Argument(None)) -> None:
 
 
 @app.command(rich_help_panel=_INTERACTIVE)
-def edit(todo_id: str = typer.Argument(None)) -> None:
+def edit(todo_id: str = typer.Argument(...)) -> None:
     """Open plan.md in editor."""
     from td_cli.config import open_notes
     from td_cli.data import ensure_notes, get_todo, resolve_id
-    from td_cli.ui import pick_todo
 
-    if todo_id:
-        todo_id = resolve_id(todo_id)
-    else:
-        todo_id = pick_todo("Select todo to edit plan", "edit ❯ ")
-        if not todo_id:
-            raise typer.Abort()
-
+    todo_id = resolve_id(todo_id)
     todo = get_todo(todo_id)
     if not todo:
         raise typer.Exit(1)
@@ -1424,24 +1417,6 @@ def link(arg1: str = typer.Argument(None), arg2: str = typer.Argument(None)) -> 
         stderr.print(f"[green]✓[/] Linked: [bold]{title}[/] › [dim]{notes_input}[/]")
 
 
-# ---------------------------------------------------------------------------
-# td open [id]
-# ---------------------------------------------------------------------------
-
-
-@app.command("open", rich_help_panel=_INTERACTIVE)
-def open_cmd(todo_id: str = typer.Argument(None)) -> None:
-    """Open action menu for a todo."""
-    from td_cli.data import resolve_id
-    from td_cli.ui import pick_todo
-
-    if not todo_id:
-        todo_id = pick_todo("Select todo", "open ❯ ")
-        if not todo_id:
-            raise typer.Abort()
-    else:
-        todo_id = resolve_id(todo_id)
-    _select_todo(todo_id)
 
 
 # ---------------------------------------------------------------------------
@@ -1487,12 +1462,12 @@ def take_cmd(todo_id: str = typer.Argument(None)) -> None:
 
 
 # ---------------------------------------------------------------------------
-# td browse
+# td open
 # ---------------------------------------------------------------------------
 
 
-@app.command(rich_help_panel=_INTERACTIVE)
-def browse() -> None:
+@app.command("open", rich_help_panel=_INTERACTIVE)
+def open_cmd() -> None:
     """Open notes directory in editor."""
     from td_cli.config import NOTES_DIR, open_notes
 

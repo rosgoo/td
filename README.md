@@ -143,7 +143,7 @@ Set `editor` to `"obsidian"` in your settings to open notes directly in Obsidian
 }
 ```
 
-`td edit` will open the note via `obsidian://open?vault=td&file=...`, navigating directly to the file. You can also create folders directly in Obsidian and run `td sync` to import them as todos.
+`td edit <id>` will open the note via `obsidian://open?vault=td&file=...`, navigating directly to the file. You can also create folders directly in Obsidian and run `td sync` to import them as todos.
 
 **Cursor:**
 
@@ -170,7 +170,7 @@ Python packages (installed automatically): [typer](https://typer.tiangolo.com), 
 
 ## 💻 Commands
 
-All commands accept an optional `[id]` (or ID prefix) to skip the interactive picker. This makes them usable by AI agents non-interactively.
+Most non-interactive commands accept an optional `[id]` (or ID prefix). This makes them usable by AI agents non-interactively.
 
 ### Interactive
 
@@ -178,9 +178,8 @@ All commands accept an optional `[id]` (or ID prefix) to skip the interactive pi
 |---------|-------------|
 | `td` | Open the fzf picker (create or select a todo) |
 | `td do ["title"]` | Create a todo and immediately open a Claude session (random name if omitted) |
-| `td open [id]` | Open the action menu for a todo (resume session, link, done, etc.) |
-| `td edit [id]` | Open plan.md in your editor |
-| `td browse` | Open notes directory in your editor |
+| `td open` | Open notes directory in your editor |
+| `td edit <id>` | Open plan.md in your editor |
 | `td find [query]` | Search Claude sessions, create a todo, and resume |
 
 `td do` and `td new` support `-c <parent>` to create as a subtask under a parent todo.
