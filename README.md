@@ -1,20 +1,18 @@
-```
-  ▄▄▄▄▄  ▄▄▄▄▄  ▄▄▄▄   ▄▄▄▄▄
-    █    █   █ █    █ █   █
-    █    █   █ █    █ █   █
-    █    █▄▄▄█ █▄▄▄▀  █▄▄▄█
-```
+TODO: cli that manages task, session, and worktrees for agentic coding.
 
-Minimal task and session manager for agentic coding.
+<img width="1093" height="480" alt="Screenshot 2026-04-05 at 11 57 59 PM" src="https://github.com/user-attachments/assets/520f9aaf-4a5c-4966-9ead-a09ba42ac27e" />
 
 ## 📑 Table of Contents
 
 - [✨ Features](#-features)
+- [🍿 Demo](#-demo)
 - [🚀 Quick Start](#-quick-start)
 - [📦 Installation](#-installation)
 - [💻 Commands](#-commands)
 - [🌳 Worktrees](#-worktrees)
 - [🤖 Claude Integration](#-claude-integration)
+- [📅 Weekly Summaries](#-weekly-summaries)
+- [🗓️ Calendar](#️-calendar)
 - [⚙️ Configuration](#️-configuration)
 - [📂 Data](#-data)
 
@@ -29,13 +27,21 @@ Minimal task and session manager for agentic coding.
 - **`td do`** — create a todo and drop into a Claude session directly (run with no name to get a random NYC-inspired name)
 - **`/td` slash command** — manage todos from inside any Claude Code session using the non-interactive cli commands
 - **Linear & GitHub linking** — attach tickets, PRs, and branches to todos; open them from the picker
-- **Session summaries** — auto-generates a `summary.md` when marking a todo as done, or on-demand from the picker. Uses `claude -p` with Haiku for fast, concise summaries of what was accomplished
-- **Weekly summaries** — `td week` generates an HTML summary of tasks and PRs organized by day, with session-based filtering to exclude cleanup-only moves
+- **Smart rename** — `td rename` uses Claude Haiku to suggest a clean, descriptive title based on your plan notes, so tasks stay organized without manual cleanup
+- **Session summaries** — auto-generates a `summary.md` when marking a todo as done, or on-demand from the picker. Uses Claude Haiku for fast, concise summaries of what was accomplished
+- **Weekly summaries** — `td week` generates an HTML report of tasks and PRs organized by day, with time-by-task stats showing how long you spent on each todo across sessions
 - **Calendar view** — `td calendar` shows a month grid with per-day stats and clickable links into each day's weekly summary
 - **Pre-compact hook** — automatically snapshots conversation context into `plan.md` before Claude compacts, so notes are never lost
-- **Local first** — all storage is done in markdown and json reducing dependencies
+- **Local first** — all storage is done in markdown and json reducing dependencies and letting agents modify directly.
 
 ---
+
+## 🍿 Demo 
+
+This demo goes through the main `td` features: the todo list with subtasks, resuming sessions, using `/td` through Claude, worktree management, and plan injection using Obsidian.
+
+https://github.com/user-attachments/assets/28aee938-ccde-4dd7-921a-da015a48e8e3
+
 
 ## 🚀 Quick Start
 
@@ -75,6 +81,12 @@ This downloads the latest release, installs the Python package (via pipx, pip, o
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
+```
+
+After installing, run `td init` to configure your data directory, editor, and other settings:
+
+```bash
+td init
 ```
 
 To update:
@@ -415,6 +427,48 @@ Environment variables override settings: `TODO_DATA_DIR`, `TODO_REPO`, `TODO_EDI
     weekly-summary-YYYY-MM-DD.html  # Weekly summaries (named by Monday's date)
     calendar.html                   # Calendar view
 ```
+
+---
+
+## 📅 Weekly Summaries
+
+`td week` generates a self-contained HTML report covering the past 7 days of work. Open it in your browser to see:
+
+- **Tasks by day** — every todo that was active or completed that day, with its title, status, and any linked Linear ticket or GitHub PR
+- **Time-by-task stats** — how many minutes each todo accumulated across all Claude sessions during the week, so you can see at a glance where your time actually went
+- **Session-based filtering** — moves and cleanup that didn't involve a real Claude session are excluded, keeping the report focused on actual work
+
+```bash
+td week              # current week
+td week --weeks 2    # last two weeks
+```
+
+The report is saved to `~/td/summary/weekly-summary-YYYY-MM-DD.html` (named by Monday's date) and opened automatically in your default browser.
+
+<img width="830" height="828" alt="weekly" src="https://github.com/user-attachments/assets/96a71ae5-a12a-420c-8154-6bb1b57a7a74" />
+
+---
+
+## 🗓️ Calendar
+
+`td calendar` generates a month-grid HTML view and opens it in your browser. Each day shows:
+
+- Total time worked (summed across all tasks with sessions that day)
+- Number of todos touched
+- A clickable link into that day's weekly summary
+
+```bash
+td calendar              # current month
+td calendar --months 3   # last three months
+```
+
+The calendar is saved to `~/td/summary/calendar.html` and re-generated each time you run the command.
+
+<img width="1049" height="671" alt="calendar" src="https://github.com/user-attachments/assets/520421f6-8f61-4032-a905-3239b4f8de4c" />
+
+---
+
+## 📂 Data
 
 Each todo record contains:
 
