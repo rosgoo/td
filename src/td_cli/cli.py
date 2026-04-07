@@ -80,6 +80,9 @@ def main(
     from td_cli.data import ensure_setup
 
     ensure_setup()
+    from td_cli.version_check import check_for_update
+
+    check_for_update()
     if ctx.invoked_subcommand is None:
         _picker()
 
@@ -2128,6 +2131,9 @@ def update() -> None:
                 stderr.print("[red]✗[/] install.sh failed")
                 raise typer.Exit(1)
         stderr.print("[green]✓[/] Updated successfully")
+        from td_cli.version_check import clear_cache
+
+        clear_cache()
         return
 
     stderr.print("[dim]Checking for updates...[/]")
