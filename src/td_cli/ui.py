@@ -208,7 +208,7 @@ def format_fzf_lines(show_done: bool = True, group_filter: str = "", collapse_ch
         branch = t.get("branch", "")
         wt = t.get("worktree_path", "")
         ticket = t.get("linear_ticket", "")
-        session = t.get("session_id", "")
+        session = t.get("session_id", "") or t.get("worktree_path", "")
         d = depth(t)
         is_subtask = d > 0
 
