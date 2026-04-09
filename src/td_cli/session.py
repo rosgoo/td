@@ -750,13 +750,21 @@ def start_session(todo_id: str, mode: str = "") -> None:
                 ).returncode
                 == 0
             ):
-                subprocess.run(
+                result = subprocess.run(
                     ["git", "-C", repo, "worktree", "add", wt_path, branch],
                     capture_output=True,
+                    text=True,
                 )
+                if result.returncode != 0 or not os.path.isdir(wt_path):
+                    console.print(
+                        f"[red]Error:[/] Failed to recreate worktree: {result.stderr.strip()}"
+                    )
+                    raise SystemExit(1)
             else:
                 console.print(f"[red]Error:[/] Branch '{branch}' no longer exists.")
                 raise SystemExit(1)
+            # Old session won't be resumable in a fresh worktree — clear it
+            session_id = ""
         else:
             return
 
