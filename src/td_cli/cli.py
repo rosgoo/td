@@ -582,6 +582,12 @@ def _archive_todo(todo_id: str) -> None:
                             ],
                             capture_output=True,
                         )
+                        # git worktree remove may leave the directory behind
+                        # (e.g. untracked files outside git's knowledge)
+                        if os.path.isdir(wt_path):
+                            import shutil
+
+                            shutil.rmtree(wt_path, ignore_errors=True)
                         stderr.print("[dim]Removed worktree[/]")
                     if (
                         branch
@@ -1158,6 +1164,10 @@ def delete(
             ["git", "-C", repo, "worktree", "remove", wt_path, "--force"],
             capture_output=True,
         )
+        if os.path.isdir(wt_path):
+            import shutil
+
+            shutil.rmtree(wt_path, ignore_errors=True)
         stderr.print("[dim]Removed worktree[/]")
 
     if branch and not branch.startswith("http") and repo:
