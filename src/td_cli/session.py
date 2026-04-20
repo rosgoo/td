@@ -646,38 +646,17 @@ def start_session(todo_id: str, here: bool = False) -> None:
     # If we have a worktree, validate and switch into it
     if wt_path:
         if not validate_worktree(wt_path):
-            console.print(f"[yellow]Warning:[/] Worktree at {wt_path} is missing.")
-            if confirm("Recreate worktree?", default=False):
-                require_repo()
-                repo = REPO_ROOT
-                os.makedirs(os.path.dirname(wt_path), exist_ok=True)
-                if (
-                    branch
-                    and subprocess.run(
-                        [
-                            "git",
-                            "-C",
-                            repo,
-                            "show-ref",
-                            "--verify",
-                            "--quiet",
-                            f"refs/heads/{branch}",
-                        ],
-                        capture_output=True,
-                    ).returncode
-                    == 0
-                ):
-                    subprocess.run(
-                        ["git", "-C", repo, "worktree", "add", wt_path, branch],
-                        capture_output=True,
-                    )
-                else:
-                    console.print(
-                        f"[red]Error:[/] Branch '{branch}' no longer exists."
-                    )
-                    raise SystemExit(1)
-            else:
-                return
+            console.print(
+                f"[yellow]Warning:[/] Worktree at {wt_path} is missing. Recreating..."
+            )
+            require_repo()
+            # Prune stale worktree entries so git forgets the old path.
+            subprocess.run(
+                ["git", "-C", REPO_ROOT, "worktree", "prune"], capture_output=True
+            )
+            wt_path = init_worktree_for_todo(todo_id)
+            refreshed = get_todo(todo_id)
+            branch = refreshed.get("branch", "") if refreshed else branch
 
         # Switch to worktree
         real_wt = os.path.realpath(wt_path)
