@@ -6,8 +6,6 @@ import shlex
 import subprocess
 import uuid
 
-import typer
-
 from td_cli.config import (
     BRANCH_PREFIX,
     CLAUDE_COMMAND,
@@ -22,7 +20,7 @@ from td_cli.data import (
     write_todos,
 )
 from td_cli.git import require_repo, validate_worktree, worktree_dir
-from td_cli.ui import action_menu, confirm
+from td_cli.ui import confirm
 
 
 def _find_session_file(session_id: str, hint_cwd: str = "") -> str | None:
@@ -41,6 +39,30 @@ def _find_session_file(session_id: str, hint_cwd: str = "") -> str | None:
     # Fallback: glob across all project dirs
     matches = _glob.glob(f"{projects_base}/*/{session_id}.jsonl")
     return matches[0] if matches else None
+
+
+def discover_sessions(cwd: str) -> list[dict]:
+    """Find all Claude sessions for a directory, sorted by most recent first.
+
+    Returns a list of dicts with keys: session_id, path, mtime.
+    """
+    projects_base = os.path.expanduser("~/.claude/projects")
+    encoded = cwd.replace("/", "-").replace(".", "-")
+    project_dir = f"{projects_base}/{encoded}"
+
+    sessions = []
+    if os.path.isdir(project_dir):
+        for f in os.listdir(project_dir):
+            if f.endswith(".jsonl"):
+                path = os.path.join(project_dir, f)
+                sessions.append({
+                    "session_id": f[:-6],
+                    "path": path,
+                    "mtime": os.path.getmtime(path),
+                })
+
+    sessions.sort(key=lambda s: s["mtime"], reverse=True)
+    return sessions
 
 
 # --- Worktree creation ------------------------------------------------------
@@ -158,18 +180,16 @@ def init_worktree_for_todo(todo_id: str) -> str:
             capture_output=True,
         )
 
-    # Run worktree setup script if configured
+    # Run worktree setup script in background if configured
     if WORKTREE_SCRIPT:
-        console.print(f"[dim]Running worktree script: {WORKTREE_SCRIPT}[/]")
-        result = subprocess.run(
+        console.print(f"[dim]Running worktree script in background: {WORKTREE_SCRIPT}[/]")
+        subprocess.Popen(
             WORKTREE_SCRIPT,
             shell=True,
             cwd=wt_path,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
-        if result.returncode != 0:
-            console.print(
-                f"[yellow]Warning:[/] Worktree script exited with code {result.returncode}"
-            )
 
     # Update todo record
     todos = read_todos()
@@ -649,6 +669,8 @@ def start_session(todo_id: str, mode: str = "") -> None:
         real_cwd = os.path.realpath(os.getcwd())
         real_scwd = os.path.realpath(session_cwd)
         if real_cwd != real_scwd:
+            from td_cli.ui import action_menu
+
             choice = action_menu(
                 f"Session was started in {session_cwd}",
                 "Switch to original directory",
@@ -679,6 +701,8 @@ def start_session(todo_id: str, mode: str = "") -> None:
 
         # Check branch matches (non-worktree sessions)
         if branch:
+            from td_cli.ui import action_menu
+
             current_branch = subprocess.run(
                 ["git", "branch", "--show-current"],
                 capture_output=True,
@@ -710,6 +734,8 @@ def start_session(todo_id: str, mode: str = "") -> None:
             launch_claude(todo_id, session_id)
             return
         else:
+            from td_cli.ui import action_menu
+
             choice = action_menu(
                 "No worktree — how to start?",
                 "Create a worktree (new branch)",
@@ -729,44 +755,20 @@ def start_session(todo_id: str, mode: str = "") -> None:
 
     # Case 3: Worktree exists
     if not validate_worktree(wt_path):
-        console.print(f"[yellow]Warning:[/] Worktree at {wt_path} is missing.")
-        if confirm("Recreate worktree?", default=False):
-            require_repo()
-            repo = REPO_ROOT
-            os.makedirs(os.path.dirname(wt_path), exist_ok=True)
-            if (
-                branch
-                and subprocess.run(
-                    [
-                        "git",
-                        "-C",
-                        repo,
-                        "show-ref",
-                        "--verify",
-                        "--quiet",
-                        f"refs/heads/{branch}",
-                    ],
-                    capture_output=True,
-                ).returncode
-                == 0
-            ):
-                result = subprocess.run(
-                    ["git", "-C", repo, "worktree", "add", wt_path, branch],
-                    capture_output=True,
-                    text=True,
-                )
-                if result.returncode != 0 or not os.path.isdir(wt_path):
-                    console.print(
-                        f"[red]Error:[/] Failed to recreate worktree: {result.stderr.strip()}"
-                    )
-                    raise SystemExit(1)
-            else:
-                console.print(f"[red]Error:[/] Branch '{branch}' no longer exists.")
-                raise SystemExit(1)
-            # Old session won't be resumable in a fresh worktree — clear it
-            session_id = ""
-        else:
-            return
+        console.print(
+            f"[yellow]Warning:[/] Worktree at {wt_path} is missing. Recreating..."
+        )
+        require_repo()
+        # Prune stale worktree entries so git forgets the old path.
+        subprocess.run(
+            ["git", "-C", REPO_ROOT, "worktree", "prune"], capture_output=True
+        )
+        wt_path = init_worktree_for_todo(todo_id)
+        refreshed = get_todo(todo_id)
+        if refreshed:
+            branch = refreshed.get("branch", "") or branch
+        # Old session won't be resumable in a fresh worktree — clear it
+        session_id = ""
 
     # Switch to worktree
     real_wt = os.path.realpath(wt_path)

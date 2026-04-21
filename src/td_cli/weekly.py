@@ -46,15 +46,8 @@ def _session_mtime(session_id: str) -> datetime | None:
     return None
 
 
-def _session_duration_minutes(session_id: str, idle_threshold: float = 5.0) -> float | None:
-    """Calculate active session time by summing inter-message gaps under threshold.
-
-    Only counts gaps between consecutive timestamps that are shorter than
-    idle_threshold minutes. Longer gaps = idle/away time, excluded.
-    """
-    path = _find_session_file(session_id)
-    if not path:
-        return None
+def _file_duration_minutes(path: str, idle_threshold: float = 5.0) -> float | None:
+    """Calculate active session time from a single JSONL file."""
     try:
         timestamps: list[datetime] = []
         with open(path) as f:
@@ -78,6 +71,53 @@ def _session_duration_minutes(session_id: str, idle_threshold: float = 5.0) -> f
         return active if active > 0 else None
     except OSError:
         pass
+    return None
+
+
+def _session_duration_minutes(session_id: str, idle_threshold: float = 5.0) -> float | None:
+    """Calculate active session time by summing inter-message gaps under threshold."""
+    path = _find_session_file(session_id)
+    if not path:
+        return None
+    return _file_duration_minutes(path, idle_threshold)
+
+
+def _task_latest_session_mtime(task: dict) -> datetime | None:
+    """Return the most recent session mtime for a task, using discovery or stored ID."""
+    from td_cli.session import discover_sessions
+
+    wt_path = task.get("worktree_path", "")
+    if wt_path:
+        sessions = discover_sessions(wt_path)
+        if sessions:
+            return datetime.fromtimestamp(sessions[0]["mtime"])
+
+    # Fall back to stored session_id
+    session_id = task.get("session_id", "")
+    if session_id:
+        return _session_mtime(session_id)
+    return None
+
+
+def _task_total_duration(task: dict, idle_threshold: float = 5.0) -> float | None:
+    """Sum active duration across all sessions for a task."""
+    from td_cli.session import discover_sessions
+
+    wt_path = task.get("worktree_path", "")
+    if wt_path:
+        sessions = discover_sessions(wt_path)
+        if sessions:
+            total = 0.0
+            for s in sessions:
+                dur = _file_duration_minutes(s["path"], idle_threshold)
+                if dur:
+                    total += dur
+            return total if total > 0 else None
+
+    # Fall back to stored session_id
+    session_id = task.get("session_id", "")
+    if session_id:
+        return _session_duration_minutes(session_id, idle_threshold)
     return None
 
 
@@ -368,10 +408,7 @@ def collect_data_for_week(monday: datetime) -> dict:
             continue
 
         # Check if actually worked on (session active in range)
-        session_id = task.get("session_id", "")
-        session_dt = None
-        if session_id:
-            session_dt = _session_mtime(session_id)
+        session_dt = _task_latest_session_mtime(task)
 
         active_this_period = False
         if session_dt and session_dt.strftime("%Y-%m-%d") >= start_str:
@@ -384,11 +421,8 @@ def collect_data_for_week(monday: datetime) -> dict:
         task["_summary_full"] = _read_full_md(task, "summary.md")
         task["_plan_full"] = _read_full_md(task, "plan.md")
 
-        # Session duration
-        if session_id:
-            task["_duration_min"] = _session_duration_minutes(session_id)
-        else:
-            task["_duration_min"] = None
+        # Session duration (sum across all sessions for this task)
+        task["_duration_min"] = _task_total_duration(task)
 
         # Linear ticket
         ticket = _extract_linear_ticket(task.get("title", ""))

@@ -84,6 +84,15 @@ def main(
 
     check_for_update()
     if ctx.invoked_subcommand is None:
+        # If CWD is inside a task's worktree, jump straight to that task
+        cwd = os.path.realpath(os.getcwd())
+        from td_cli.data import active_todos
+
+        for t in active_todos():
+            wt = t.get("worktree_path", "")
+            if wt and cwd.startswith(os.path.realpath(wt)):
+                _select_todo(t["id"])
+                return
         _picker()
 
 
@@ -113,6 +122,11 @@ def do_cmd(
         "-c",
         "--child-of",
         help="Create as subtask (parent ID/name, or '?' to pick).",
+    ),
+    here: bool = typer.Option(
+        False,
+        "--here",
+        help="Skip worktree creation, use current directory.",
     ),
 ) -> None:
     """Create a todo and start Claude immediately."""
@@ -188,7 +202,7 @@ def do_cmd(
         stderr.print(f"  [dim]Parent: {parent['title']}[/]")
     else:
         stderr.print(f"[green]✓[/] Created: [bold]{title}[/]  [dim]{todo_id}[/]")
-    start_session(todo_id, "current-dir")
+    start_session(todo_id, here=here)
 
 
 # ---------------------------------------------------------------------------
@@ -528,40 +542,31 @@ def _archive_todo(todo_id: str) -> None:
         if confirm("Remove worktree and branch?", default=False):
             repo = REPO_ROOT
             if repo:
-                # Move Claude session files from worktree dir to main repo
+                # Move all Claude session files from worktree dir to main repo
                 # before removing the worktree, so transcripts remain accessible.
                 if wt_path:
-                    from td_cli.session import _find_session_file
+                    from td_cli.session import discover_sessions
 
                     main_encoded = repo.replace("/", "-").replace(".", "-")
                     main_session_dir = os.path.expanduser(
                         f"~/.claude/projects/{main_encoded}"
                     )
-                    todos = read_todos()
+                    sessions = discover_sessions(wt_path)
                     moved_any = False
+                    for s in sessions:
+                        os.makedirs(main_session_dir, exist_ok=True)
+                        dest_file = f"{main_session_dir}/{s['session_id']}.jsonl"
+                        if s["path"] != dest_file:
+                            os.rename(s["path"], dest_file)
+                            moved_any = True
+                    # Update stored session_cwd for all tasks in this worktree
+                    todos = read_todos()
                     for t in todos:
-                        if t["id"] not in all_ids:
-                            continue
-                        sid = t.get("session_id", "")
-                        scwd = t.get("session_cwd", "")
-                        if not sid:
-                            continue
-                        # Only move if the session lives under the worktree
-                        if scwd and not os.path.realpath(scwd).startswith(
-                            os.path.realpath(wt_path)
-                        ):
-                            continue
-                        old_file = _find_session_file(sid, scwd)
-                        if old_file:
-                            os.makedirs(main_session_dir, exist_ok=True)
-                            dest_file = f"{main_session_dir}/{sid}.jsonl"
-                            if old_file != dest_file:
-                                os.rename(old_file, dest_file)
-                                moved_any = True
-                        t["session_cwd"] = repo
+                        if t["id"] in all_ids:
+                            t["session_cwd"] = repo
                     write_todos(todos)
                     if moved_any:
-                        stderr.print("[dim]Moved session(s) to main repo[/]")
+                        stderr.print(f"[dim]Moved {len(sessions)} session(s) to main repo[/]")
 
                 with stderr.status("[dim]Cleaning up…[/]"):
                     if wt_path and os.path.isdir(wt_path):
@@ -577,6 +582,12 @@ def _archive_todo(todo_id: str) -> None:
                             ],
                             capture_output=True,
                         )
+                        # git worktree remove may leave the directory behind
+                        # (e.g. untracked files outside git's knowledge)
+                        if os.path.isdir(wt_path):
+                            import shutil
+
+                            shutil.rmtree(wt_path, ignore_errors=True)
                         stderr.print("[dim]Removed worktree[/]")
                     if (
                         branch
@@ -1058,8 +1069,11 @@ def rename(
 
     if not new_title:
         default_title = old_title
-        session_id = todo.get("session_id", "")
-        if session_id:
+        from td_cli.session import discover_sessions
+
+        wt_path = todo.get("worktree_path", "")
+        has_sessions = bool(discover_sessions(wt_path)) if wt_path else bool(todo.get("session_id", ""))
+        if has_sessions:
             from td_cli.ui import action_menu as _rename_menu
 
             choice = _rename_menu("Rename source?", "Manual", "Smart rename")
@@ -1150,6 +1164,10 @@ def delete(
             ["git", "-C", repo, "worktree", "remove", wt_path, "--force"],
             capture_output=True,
         )
+        if os.path.isdir(wt_path):
+            import shutil
+
+            shutil.rmtree(wt_path, ignore_errors=True)
         stderr.print("[dim]Removed worktree[/]")
 
     if branch and not branch.startswith("http") and repo:
@@ -2194,14 +2212,26 @@ def _read_transcript(todo: dict, max_chars: int = 50000) -> str | None:
     """Extract user/assistant text from a session transcript, capped to max_chars.
 
     Skips tool calls and system messages to keep the input small and fast.
+    Uses session discovery for worktree tasks (most recent session), falls
+    back to stored session_id.
     """
     import json as _json
 
-    from td_cli.session import _find_session_file
+    from td_cli.session import _find_session_file, discover_sessions
 
-    session_id = todo.get("session_id", "")
-    session_cwd = todo.get("session_cwd", "")
-    transcript_path = _find_session_file(session_id, session_cwd)
+    transcript_path = None
+    wt_path = todo.get("worktree_path", "")
+    if wt_path:
+        sessions = discover_sessions(wt_path)
+        if sessions:
+            transcript_path = sessions[0]["path"]
+
+    if not transcript_path:
+        session_id = todo.get("session_id", "")
+        session_cwd = todo.get("session_cwd", "")
+        if session_id:
+            transcript_path = _find_session_file(session_id, session_cwd)
+
     if not transcript_path:
         stderr.print("[yellow]Could not find transcript for this session.[/]")
         return None
@@ -2285,7 +2315,11 @@ def _summarize_todo(todo_id: str) -> None:
         stderr.print("[red]Error:[/] Todo not found.")
         return
 
-    if not todo.get("session_id"):
+    from td_cli.session import discover_sessions
+
+    wt_path = todo.get("worktree_path", "")
+    has_sessions = bool(discover_sessions(wt_path)) if wt_path else bool(todo.get("session_id"))
+    if not has_sessions:
         stderr.print("[yellow]No session linked to this todo.[/]")
         return
 
@@ -2401,9 +2435,14 @@ def _select_todo(todo_id: str) -> None:
     wt_path = todo.get("worktree_path", "")
     branch = todo.get("branch", "")
     ticket = todo.get("linear_ticket", "")
-    session_id = todo.get("session_id", "")
     github_pr = todo.get("github_pr", "")
     group = todo.get("group", "todo")
+
+    # Discover sessions from worktree (or fall back to stored session_id)
+    from td_cli.session import discover_sessions
+
+    sessions = discover_sessions(wt_path) if wt_path else []
+    has_sessions = bool(sessions) or bool(todo.get("session_id", ""))
 
     stderr.print(f"\n[bold]{title}[/]")
     stderr.print(f"  [dim]·[/] ID        [dim]{todo_id}[/]")
@@ -2415,22 +2454,18 @@ def _select_todo(todo_id: str) -> None:
         stderr.print(f"  [cyan]·[/] PR        [dim]{github_pr}[/]")
     if wt_path:
         stderr.print(f"  [dim]· Worktree  {wt_path}[/]")
-    if session_id:
-        stderr.print(f"  [green]◉[/] Session   [dim]{session_id}[/]")
+    if sessions:
+        stderr.print(f"  [green]◉[/] Sessions  [dim]{len(sessions)}[/]")
     stderr.print()
 
     is_done = todo.get("status") == "done"
 
     options: list[str] = []
-    if session_id:
-        options.append("Resume Claude session")
     if not is_done:
-        if not session_id:
-            if wt_path:
-                options.append("Start Claude session")
-            else:
-                options.append("Start Claude (current dir)")
-                options.append("Start Claude (new worktree)")
+        if has_sessions:
+            options.append("Resume Claude session")
+        else:
+            options.append("Start Claude session")
         if wt_path and branch:
             options.append("Try on main repo")
             # Check if a try branch exists for "take"
@@ -2460,7 +2495,7 @@ def _select_todo(todo_id: str) -> None:
     summary_path = os.path.join(os.path.dirname(notes_path), "summary.md")
     has_summary = os.path.isfile(summary_path)
     options.append("Open")
-    if session_id:
+    if has_sessions:
         options.append("Re-summarize session" if has_summary else "Summarize session")
     options.extend(["Admin", "Back"])
 
@@ -2470,10 +2505,6 @@ def _select_todo(todo_id: str) -> None:
 
     if choice in ("Resume Claude session", "Start Claude session"):
         start_session(todo_id)
-    elif choice == "Start Claude (new worktree)":
-        start_session(todo_id, "worktree")
-    elif choice == "Start Claude (current dir)":
-        start_session(todo_id, "current-dir")
     elif choice == "Try on main repo":
         try_worktree(todo_id)
     elif choice == "Take from try branch":
