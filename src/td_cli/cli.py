@@ -202,7 +202,7 @@ def do_cmd(
         stderr.print(f"  [dim]Parent: {parent['title']}[/]")
     else:
         stderr.print(f"[green]✓[/] Created: [bold]{title}[/]  [dim]{todo_id}[/]")
-    start_session(todo_id, here=here)
+    start_session(todo_id, mode="current-dir" if here else "")
 
 
 # ---------------------------------------------------------------------------
@@ -2035,44 +2035,52 @@ def init() -> None:
         except Exception:
             pass
 
+    def _ask(prompt: str, default: str = "") -> str:
+        val = prompt_input(prompt, default=default)
+        # Strip one matched pair of surrounding single/double quotes — users
+        # often paste values verbatim from the hint text (e.g. 'claude ...').
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+            val = val[1:-1]
+        return val
+
     stderr.print("\n[bold]td init[/] — Configure td settings\n")
 
     stderr.print("  [bold]data_dir[/] — Where todos and notes are stored")
-    data_dir = prompt_input("Data directory", default=cur.get("data_dir", "~/td"))
+    data_dir = _ask("Data directory", default=cur.get("data_dir", "~/td"))
     stderr.print()
 
     stderr.print("  [bold]repo[/] — Git repo root (leave empty to auto-detect via git)")
-    repo = prompt_input("Repo root", default=cur.get("repo", ""))
+    repo = _ask("Repo root", default=cur.get("repo", ""))
     stderr.print()
 
     stderr.print("  [bold]editor[/] — Editor for opening plan.md files")
-    editor = prompt_input("Editor command", default=cur.get("editor", ""))
+    editor = _ask("Editor command", default=cur.get("editor", ""))
     stderr.print()
 
     stderr.print("  [bold]linear_org[/] — Linear organization slug")
-    linear_org = prompt_input("Linear org slug", default=cur.get("linear_org", ""))
+    linear_org = _ask("Linear org slug", default=cur.get("linear_org", ""))
     stderr.print()
 
     stderr.print("  [bold]worktree_dir[/] — Worktree directory relative to repo root")
-    wt_dir = prompt_input(
+    wt_dir = _ask(
         "Worktree directory", default=cur.get("worktree_dir", ".claude/worktrees")
     )
     stderr.print()
 
     stderr.print("  [bold]branch_prefix[/] — Prefix for auto-created branches")
-    bp = prompt_input("Branch prefix", default=cur.get("branch_prefix", "todo"))
+    bp = _ask("Branch prefix", default=cur.get("branch_prefix", "todo"))
     stderr.print()
 
     stderr.print(
         "  [bold]worktree_script[/] — Script to run after creating a worktree (optional)"
     )
-    wt_script = prompt_input("Worktree script", default=cur.get("worktree_script", ""))
+    wt_script = _ask("Worktree script", default=cur.get("worktree_script", ""))
     stderr.print()
 
     stderr.print(
         "  [bold]claude_command[/] — Command to launch Claude (e.g. 'claude --enable-auto-mode')"
     )
-    claude_cmd = prompt_input(
+    claude_cmd = _ask(
         "Claude command", default=cur.get("claude_command", "claude")
     )
     stderr.print()
