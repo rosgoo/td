@@ -26,6 +26,14 @@ Each todo may have a `summary.md` colocated with its `plan.md`. Summaries are ge
 
 If the user asks you to summarize the current conversation, write the summary to `summary.md` next to the todo's `plan.md`. Use `td show <id>` to find the plan path, then write `summary.md` in the same directory.
 
+## Artifacts
+
+A todo's `plan.md` directory is the canonical home for any artifacts produced while working on it — HTML previews, flame graphs, generated `.md` notes, screenshots, exported data, diff renders, etc. Colocate them with the plan rather than dropping them in `/tmp/` or the worktree.
+
+- Use `td show <id>` to resolve the plan path, then write artifacts into that same directory.
+- If a todo produces many artifacts, group them in a subdirectory (e.g., `artifacts/` or a topic-named folder) next to `plan.md`.
+- This applies even when the todo has a worktree — worktrees get cleaned up, but the todo's plan directory persists.
+
 ## Guidelines
 
 - **Use the CLI, not the filesystem.** Do not read/write `~/td/todo/...` files directly. Use `td plan`, `td get`, `td show`, etc. The only exception is when you need to read a plan.md or summary.md that `td show <id>` pointed you to.
